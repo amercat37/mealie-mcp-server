@@ -1,0 +1,12 @@
+services:
+  mealie-mcp-server:
+    image: mealie-mcp-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mealie-mcp-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - '8000:8000'
