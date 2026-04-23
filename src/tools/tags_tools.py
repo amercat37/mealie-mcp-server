@@ -53,25 +53,6 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
-    def create_tag(name: str) -> Dict[str, Any]:
-        """Create a new recipe tag.
-
-        Args:
-            name: Name of the tag (e.g., "Quick", "Healthy", "Family Favorite")
-
-        Returns:
-            Dict[str, Any]: The created tag details
-        """
-        try:
-            logger.info({"message": "Creating tag", "name": name})
-            return mealie.create_tag(name)
-        except Exception as e:
-            error_msg = f"Error creating tag '{name}': {str(e)}"
-            logger.error({"message": error_msg})
-            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
-            raise ToolError(error_msg)
-
-    @mcp.tool()
     def get_tag(tag_id: str) -> Dict[str, Any]:
         """Get a specific tag by ID.
 
@@ -109,52 +90,4 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)
 
-    @mcp.tool()
-    def update_tag(
-        tag_id: str,
-        name: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Update a tag's details.
 
-        Args:
-            tag_id: The UUID of the tag to update
-            name: New name for the tag
-
-        Returns:
-            Dict[str, Any]: The updated tag details
-        """
-        try:
-            logger.info({"message": "Updating tag", "tag_id": tag_id})
-
-            tag_data = {}
-            if name is not None:
-                tag_data["name"] = name
-
-            if not tag_data:
-                raise ValueError("At least one field must be provided to update")
-
-            return mealie.update_tag(tag_id, tag_data)
-        except Exception as e:
-            error_msg = f"Error updating tag '{tag_id}': {str(e)}"
-            logger.error({"message": error_msg})
-            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
-            raise ToolError(error_msg)
-
-    @mcp.tool()
-    def delete_tag(tag_id: str) -> Dict[str, Any]:
-        """Delete a specific tag.
-
-        Args:
-            tag_id: The UUID of the tag to delete
-
-        Returns:
-            Dict[str, Any]: Confirmation of deletion
-        """
-        try:
-            logger.info({"message": "Deleting tag", "tag_id": tag_id})
-            return mealie.delete_tag(tag_id)
-        except Exception as e:
-            error_msg = f"Error deleting tag '{tag_id}': {str(e)}"
-            logger.error({"message": error_msg})
-            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
-            raise ToolError(error_msg)
