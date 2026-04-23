@@ -15,7 +15,7 @@ services:
     volumes:
       - mealie-data:/app/data/
     networks:
-      - mealie-network
+      - mealie
 
 volumes:
   mealie-data:
