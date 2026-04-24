@@ -1,5 +1,5 @@
 services:
-  mealie-mcp-server:
+  mealie_mcp_server:
     build:
       context: .
       dockerfile: Dockerfile
