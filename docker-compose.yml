@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       tags:
-        - mealie-mcp-server:latest
-    container_name: mealie-mcp-server
+        - mealie_mcp_server:latest
+    container_name: mealie_mcp_server
     restart: unless-stopped
     env_file:
       - .env
