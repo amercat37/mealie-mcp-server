@@ -51,19 +51,24 @@ async def _get_jwks(jwks_uri: str) -> dict:
 class AuthentikTokenVerifier:
     """Validates Authentik-issued JWTs for the MCP bearer auth middleware."""
 
-    def __init__(self, issuer: str, audience: str | None = None):
+    def __init__(self, issuer: str, audience: str | None = None, jwks_uri: str | None = None):
         self._issuer = issuer.rstrip("/")
         self._audience = audience
+        self._jwks_uri_override = jwks_uri
         logger.info(
-            "AuthentikTokenVerifier initialized (issuer=%s, audience=%s)",
+            "AuthentikTokenVerifier initialized (issuer=%s, audience=%s, jwks_uri=%s)",
             self._issuer,
             audience or "not set",
+            jwks_uri or "via OIDC discovery",
         )
 
     async def verify_token(self, token: str) -> AccessToken | None:
         logger.debug("Verifying bearer token")
         try:
-            jwks_uri = await _get_jwks_uri(self._issuer)
+            if self._jwks_uri_override:
+                jwks_uri = self._jwks_uri_override
+            else:
+                jwks_uri = await _get_jwks_uri(self._issuer)
             jwks_data = await _get_jwks(jwks_uri)
             key_set = JsonWebKey.import_key_set(jwks_data)
             claims = jwt.decode(token, key_set)
@@ -96,4 +101,5 @@ class AuthentikTokenVerifier:
 def build_token_verifier() -> AuthentikTokenVerifier:
     issuer = os.environ["AUTHENTIK_ISSUER"]
     audience = os.environ.get("AUTHENTIK_AUDIENCE")
-    return AuthentikTokenVerifier(issuer=issuer, audience=audience)
+    jwks_uri = os.environ.get("AUTHENTIK_JWKS_URI")
+    return AuthentikTokenVerifier(issuer=issuer, audience=audience, jwks_uri=jwks_uri)
