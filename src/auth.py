@@ -10,9 +10,25 @@ from mcp.server.auth.provider import AccessToken
 
 logger = logging.getLogger("mealie-mcp.auth")
 
+_discovery_cache: dict[str, str] = {}  # issuer -> jwks_uri
 _jwks_cache: dict = {}
 _jwks_cached_at: float = 0.0
 _JWKS_TTL = 3600  # seconds
+
+
+async def _get_jwks_uri(issuer: str) -> str:
+    if issuer in _discovery_cache:
+        return _discovery_cache[issuer]
+    discovery_url = f"{issuer}/.well-known/openid-configuration"
+    logger.info("Fetching OIDC discovery document from %s", discovery_url)
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(discovery_url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        jwks_uri = data["jwks_uri"]
+        _discovery_cache[issuer] = jwks_uri
+        logger.info("Discovered JWKS URI: %s", jwks_uri)
+        return jwks_uri
 
 
 async def _get_jwks(jwks_uri: str) -> dict:
@@ -38,7 +54,6 @@ class AuthentikTokenVerifier:
     def __init__(self, issuer: str, audience: str | None = None):
         self._issuer = issuer.rstrip("/")
         self._audience = audience
-        self._jwks_uri = f"{self._issuer}/jwks/"
         logger.info(
             "AuthentikTokenVerifier initialized (issuer=%s, audience=%s)",
             self._issuer,
@@ -48,7 +63,8 @@ class AuthentikTokenVerifier:
     async def verify_token(self, token: str) -> AccessToken | None:
         logger.debug("Verifying bearer token")
         try:
-            jwks_data = await _get_jwks(self._jwks_uri)
+            jwks_uri = await _get_jwks_uri(self._issuer)
+            jwks_data = await _get_jwks(jwks_uri)
             key_set = JsonWebKey.import_key_set(jwks_data)
             claims = jwt.decode(token, key_set)
             claims.validate_exp()
@@ -70,7 +86,7 @@ class AuthentikTokenVerifier:
             logger.warning("JWT validation failed: %s", e)
             return None
         except httpx.HTTPError as e:
-            logger.error("Failed to fetch JWKS: %s", e)
+            logger.error("Failed to fetch OIDC discovery or JWKS: %s", e)
             return None
         except Exception as e:
             logger.error("Unexpected error during token verification: %s", e, exc_info=True)
