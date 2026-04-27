@@ -3,8 +3,9 @@ import os
 import time
 
 import httpx
-from authlib.jose import JsonWebKey, jwt
-from authlib.jose.errors import JoseError
+from joserfc import jwt
+from joserfc.jwk import KeySet
+from joserfc.errors import JoseError
 
 from mcp.server.auth.provider import AccessToken
 
@@ -72,8 +73,9 @@ class AuthentikTokenVerifier:
             else:
                 jwks_uri = await _get_jwks_uri(self._issuer, self._headers)
             jwks_data = await _get_jwks(jwks_uri, self._headers)
-            key_set = JsonWebKey.import_key_set(jwks_data)
-            claims = jwt.decode(token, key_set)
+            key_set = KeySet.import_key_set(jwks_data)
+            token_obj = jwt.decode(token, key_set)
+            claims = token_obj.claims
             now = int(time.time())
             exp = claims.get("exp")
             if exp is None or now > int(exp):
@@ -94,7 +96,6 @@ class AuthentikTokenVerifier:
             scopes_raw = claims.get("scope", "")
             scopes = scopes_raw.split() if isinstance(scopes_raw, str) else list(scopes_raw)
             client_id = claims.get("client_id") or claims.get("azp") or claims.get("sub", "")
-            exp = claims.get("exp")
             logger.debug("Token valid (client_id=%s, scopes=%s)", client_id, scopes)
             return AccessToken(
                 token=token,
