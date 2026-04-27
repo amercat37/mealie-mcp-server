@@ -16,13 +16,13 @@ _jwks_cached_at: float = 0.0
 _JWKS_TTL = 3600  # seconds
 
 
-async def _get_jwks_uri(issuer: str) -> str:
+async def _get_jwks_uri(issuer: str, headers: dict | None = None) -> str:
     if issuer in _discovery_cache:
         return _discovery_cache[issuer]
     discovery_url = f"{issuer}/.well-known/openid-configuration"
     logger.info("Fetching OIDC discovery document from %s", discovery_url)
     async with httpx.AsyncClient() as client:
-        resp = await client.get(discovery_url, timeout=10)
+        resp = await client.get(discovery_url, timeout=10, headers=headers or {})
         resp.raise_for_status()
         data = resp.json()
         jwks_uri = data["jwks_uri"]
@@ -31,7 +31,7 @@ async def _get_jwks_uri(issuer: str) -> str:
         return jwks_uri
 
 
-async def _get_jwks(jwks_uri: str) -> dict:
+async def _get_jwks(jwks_uri: str, headers: dict | None = None) -> dict:
     global _jwks_cache, _jwks_cached_at
     now = time.monotonic()
     if _jwks_cache and (now - _jwks_cached_at) < _JWKS_TTL:
@@ -39,7 +39,7 @@ async def _get_jwks(jwks_uri: str) -> dict:
         return _jwks_cache
     logger.info("Fetching JWKS from %s", jwks_uri)
     async with httpx.AsyncClient() as client:
-        resp = await client.get(jwks_uri, timeout=10)
+        resp = await client.get(jwks_uri, timeout=10, headers=headers or {})
         resp.raise_for_status()
         _jwks_cache = resp.json()
         _jwks_cached_at = now
@@ -51,15 +51,17 @@ async def _get_jwks(jwks_uri: str) -> dict:
 class AuthentikTokenVerifier:
     """Validates Authentik-issued JWTs for the MCP bearer auth middleware."""
 
-    def __init__(self, issuer: str, audience: str | None = None, jwks_uri: str | None = None):
+    def __init__(self, issuer: str, audience: str | None = None, jwks_uri: str | None = None, host_header: str | None = None):
         self._issuer = issuer.rstrip("/")
         self._audience = audience
         self._jwks_uri_override = jwks_uri
+        self._headers = {"Host": host_header} if host_header else {}
         logger.info(
-            "AuthentikTokenVerifier initialized (issuer=%s, audience=%s, jwks_uri=%s)",
+            "AuthentikTokenVerifier initialized (issuer=%s, audience=%s, jwks_uri=%s, host_header=%s)",
             self._issuer,
             audience or "not set",
             jwks_uri or "via OIDC discovery",
+            host_header or "not set",
         )
 
     async def verify_token(self, token: str) -> AccessToken | None:
@@ -68,8 +70,8 @@ class AuthentikTokenVerifier:
             if self._jwks_uri_override:
                 jwks_uri = self._jwks_uri_override
             else:
-                jwks_uri = await _get_jwks_uri(self._issuer)
-            jwks_data = await _get_jwks(jwks_uri)
+                jwks_uri = await _get_jwks_uri(self._issuer, self._headers)
+            jwks_data = await _get_jwks(jwks_uri, self._headers)
             key_set = JsonWebKey.import_key_set(jwks_data)
             claims = jwt.decode(token, key_set)
             now = int(time.time())
@@ -115,4 +117,5 @@ def build_token_verifier() -> AuthentikTokenVerifier:
     issuer = os.environ["AUTHENTIK_ISSUER"]
     audience = os.environ.get("AUTHENTIK_AUDIENCE")
     jwks_uri = os.environ.get("AUTHENTIK_JWKS_URI")
-    return AuthentikTokenVerifier(issuer=issuer, audience=audience, jwks_uri=jwks_uri)
+    host_header = os.environ.get("AUTHENTIK_HOST")
+    return AuthentikTokenVerifier(issuer=issuer, audience=audience, jwks_uri=jwks_uri, host_header=host_header)
