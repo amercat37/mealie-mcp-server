@@ -71,14 +71,24 @@ class AuthentikTokenVerifier:
                 jwks_uri = await _get_jwks_uri(self._issuer)
             jwks_data = await _get_jwks(jwks_uri)
             key_set = JsonWebKey.import_key_set(jwks_data)
-            claims_options = {
-                "iss": {"essential": True, "value": self._issuer},
-                "exp": {"essential": True},
-            }
+            claims = jwt.decode(token, key_set)
+            now = int(time.time())
+            exp = claims.get("exp")
+            if exp is None or now > int(exp):
+                logger.warning("Token expired or missing exp claim")
+                return None
+            token_iss = (claims.get("iss") or "").rstrip("/")
+            logger.debug("Token iss=%r (expected=%r)", token_iss, self._issuer)
+            if token_iss != self._issuer:
+                logger.warning("ISS mismatch: token=%r expected=%r", token_iss, self._issuer)
+                return None
             if self._audience:
-                claims_options["aud"] = {"essential": True, "value": self._audience}
-            claims = jwt.decode(token, key_set, claims_options=claims_options)
-            claims.validate(int(time.time()), 0)
+                aud = claims.get("aud")
+                if isinstance(aud, str):
+                    aud = [aud]
+                if not aud or self._audience not in aud:
+                    logger.warning("Audience mismatch: %r", aud)
+                    return None
             scopes_raw = claims.get("scope", "")
             scopes = scopes_raw.split() if isinstance(scopes_raw, str) else list(scopes_raw)
             client_id = claims.get("client_id") or claims.get("azp") or claims.get("sub", "")
