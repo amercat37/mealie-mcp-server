@@ -71,11 +71,14 @@ class AuthentikTokenVerifier:
                 jwks_uri = await _get_jwks_uri(self._issuer)
             jwks_data = await _get_jwks(jwks_uri)
             key_set = JsonWebKey.import_key_set(jwks_data)
-            claims = jwt.decode(token, key_set)
-            claims.validate_exp(int(time.time()), 0)
-            claims.validate_iss(self._issuer)
+            claims_options = {
+                "iss": {"essential": True, "value": self._issuer},
+                "exp": {"essential": True},
+            }
             if self._audience:
-                claims.validate_aud(self._audience)
+                claims_options["aud"] = {"essential": True, "value": self._audience}
+            claims = jwt.decode(token, key_set, claims_options=claims_options)
+            claims.validate(int(time.time()), 0)
             scopes_raw = claims.get("scope", "")
             scopes = scopes_raw.split() if isinstance(scopes_raw, str) else list(scopes_raw)
             client_id = claims.get("client_id") or claims.get("azp") or claims.get("sub", "")
