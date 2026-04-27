@@ -4,13 +4,17 @@
 
 A comprehensive Model Context Protocol (MCP) server that enables AI assistants to interact with your [Mealie](https://github.com/mealie-recipes/mealie) recipe database through clients like Claude Desktop.
 
+> **Fork note:** This fork ([amercat37/mealie-mcp-server](https://github.com/amercat37/mealie-mcp-server)) adds OAuth 2.0 bearer authentication via [Authentik](https://goauthentik.io/), Docker/HTTP transport support, and limits recipe access to read-only tools. See [CHANGELOG.md](CHANGELOG.md) for the full diff from upstream.
+
 ## ✨ Features
 
-### 🍽️ Recipe Management
-- **CRUD Operations**: Create, read, update, patch, duplicate, and delete recipes
+### 🔐 OAuth 2.0 Authentication (optional)
+- **Authentik integration**: Validates bearer tokens via OIDC discovery + JWKS
+- **Opt-in**: runs unauthenticated when `AUTHENTIK_ISSUER` is not set
+- **Docker-friendly**: supports internal JWKS fetching via `AUTHENTIK_JWKS_URI` + `AUTHENTIK_HOST`
+
+### 🍽️ Recipe Management (read-only)
 - **Advanced Search**: Filter by text, categories, tags, and tools with AND/OR logic
-- **Image Management**: Upload images or scrape from URLs
-- **Asset Uploads**: Attach documents and files to recipes
 - **Metadata Tracking**: Mark recipes as made, track last made dates
 
 ### 🛒 Shopping Lists
@@ -36,7 +40,7 @@ A comprehensive Model Context Protocol (MCP) server that enables AI assistants t
 
 - Python 3.12+
 - Running Mealie instance with API key
-- Package manager [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Package manager [uv](https://docs.astral.sh/uv/getting-started/installation/) (for local/stdio mode) or Docker (for HTTP mode)
 
 ### Installation
 
@@ -75,6 +79,36 @@ Add the server to your `claude_desktop_config.json`:
 ```
 
 Restart Claude Desktop to load the server.
+
+#### Option 3: Docker (HTTP transport)
+
+```bash
+cp .env.template .env
+# Edit .env with your values
+docker compose up -d
+```
+
+The server listens on port `8000` at `/mcp`. Configure your MCP client to connect to `http://your-host:8000/mcp` (or via a reverse proxy with TLS).
+
+### OAuth / Authentik Setup (optional)
+
+To enable bearer token authentication, set the following in your `.env`:
+
+```env
+# Required to enable auth
+AUTHENTIK_ISSUER=https://auth.example.com/application/o/mealie-mcp-server/
+MCP_SERVER_URL=https://mealie-mcp-server.example.com
+
+# Optional — skip OIDC discovery and fetch JWKS from an internal Docker address
+AUTHENTIK_JWKS_URI=http://authentik-server:9000/application/o/mealie-mcp-server/jwks/
+# Required when using AUTHENTIK_JWKS_URI with an internal Docker DNS name
+AUTHENTIK_HOST=auth.example.com
+
+# Optional — validate audience claim on tokens
+# AUTHENTIK_AUDIENCE=
+```
+
+If `AUTHENTIK_ISSUER` is not set, the server starts without authentication.
 
 ## 📖 Usage Examples
 
@@ -117,19 +151,11 @@ Restart Claude Desktop to load the server.
 
 ## 🎯 Available Tools
 
-### Recipe Tools (13 operations)
+### Recipe Tools (4 operations — read-only)
 - `get_recipes` - List/search recipes with advanced filtering
 - `get_recipe_detailed` - Get complete recipe details
 - `get_recipe_concise` - Get recipe summary
-- `create_recipe` - Create new recipe
-- `update_recipe` - Update recipe (full replacement)
-- `patch_recipe` - Update specific fields only
-- `duplicate_recipe` - Clone a recipe
 - `mark_recipe_last_made` - Update last made timestamp
-- `set_recipe_image_from_url` - Set image from URL
-- `upload_recipe_image_file` - Upload image file
-- `upload_recipe_asset_file` - Upload document/asset
-- `delete_recipe` - Delete recipe
 
 ### Shopping List Tools (14 operations)
 - `get_shopping_lists` - List all shopping lists
@@ -147,23 +173,17 @@ Restart Claude Desktop to load the server.
 - `delete_shopping_list_item` - Delete single item
 - `delete_shopping_list_items_bulk` - Delete multiple items
 
-### Category Tools (7 operations)
+### Category Tools (4 operations — read-only)
 - `get_categories` - List/search categories
 - `get_empty_categories` - Find unused categories
-- `create_category` - Create new category
 - `get_category` - Get by ID
 - `get_category_by_slug` - Get by slug
-- `update_category` - Update category
-- `delete_category` - Delete category
 
-### Tag Tools (7 operations)
+### Tag Tools (4 operations — read-only)
 - `get_tags` - List/search tags
 - `get_empty_tags` - Find unused tags
-- `create_tag` - Create new tag
 - `get_tag` - Get by ID
 - `get_tag_by_slug` - Get by slug
-- `update_tag` - Update tag
-- `delete_tag` - Delete tag
 
 ### Meal Plan Tools (4 operations)
 - `get_all_mealplans` - List meal plans
@@ -171,7 +191,7 @@ Restart Claude Desktop to load the server.
 - `create_mealplan_bulk` - Create multiple entries
 - `get_todays_mealplan` - Get today's meals
 
-**Total: 45 tools** providing comprehensive Mealie API coverage
+**Total: 30 tools**
 
 ## 🔧 Development
 
@@ -220,9 +240,13 @@ mealie-mcp-server/
 │   │   ├── mealplan_tools.py
 │   │   └── __init__.py
 │   ├── models/              # Pydantic models
+│   ├── auth.py              # OAuth/JWT verification (Authentik)
 │   ├── server.py            # MCP server entry point
 │   └── prompts.py           # Server prompts
-├── CHANGELOG.md             # Version history
+├── Dockerfile
+├── docker-compose.yml
+├── .env.template
+├── CHANGELOG.md
 └── README.md
 ```
 

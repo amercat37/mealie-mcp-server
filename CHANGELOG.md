@@ -2,6 +2,48 @@
 
 All notable changes to the Mealie MCP Server.
 
+---
+
+## [Unreleased] — OAuth / Docker / HTTP transport (amercat37 fork)
+
+> This section covers changes made in the [amercat37/mealie-mcp-server](https://github.com/amercat37/mealie-mcp-server) fork, relative to the upstream repository. The intent is to contribute these back upstream.
+
+### Added
+
+- **OAuth 2.0 bearer authentication** via [Authentik](https://goauthentik.io/) (`src/auth.py`)
+  - JWT validation using OIDC discovery + JWKS (1-hour cache)
+  - Manual `exp`, `iss`, and `aud` claim validation
+  - Optional `AUTHENTIK_JWKS_URI` to skip OIDC discovery and fetch signing keys directly from an internal address (e.g. Docker network)
+  - Optional `AUTHENTIK_HOST` — sends a custom `Host` header when fetching JWKS, required when the internal Docker DNS name differs from Authentik's configured hostname
+  - Auth is **opt-in**: the server runs unauthenticated if `AUTHENTIK_ISSUER` is not set
+- **Docker support**: `Dockerfile` and `docker-compose.yml` for containerised deployment
+- **`joserfc`** dependency for JWT parsing (replaces the deprecated `authlib.jose` interface)
+- New environment variables documented in `.env.template`:
+  - `AUTHENTIK_ISSUER` — OIDC issuer URL (enables auth when set)
+  - `MCP_SERVER_URL` — public base URL of this server, used as the OAuth resource identifier
+  - `AUTHENTIK_AUDIENCE` — optional audience claim validation
+  - `AUTHENTIK_JWKS_URI` — optional direct JWKS endpoint override
+  - `AUTHENTIK_HOST` — optional Host header for internal JWKS fetching
+
+### Changed
+
+- Transport switched from `stdio` to `streamable-http` (`host=0.0.0.0`, `port=8000`) to support remote and containerised clients
+- `pyproject.toml` and `Dockerfile` dependencies: `authlib` replaced with `joserfc>=1.0.0`
+
+### Removed
+
+The following tools were removed to limit the blast radius of an exposed MCP endpoint. Write operations on shopping lists and meal plans were intentionally kept as they are the primary interactive use case.
+
+- **Recipe write tools** (read-only access retained):
+  `create_recipe`, `update_recipe`, `patch_recipe`, `duplicate_recipe`,
+  `set_recipe_image_from_url`, `upload_recipe_image_file`, `upload_recipe_asset_file`, `delete_recipe`
+- **Category write tools**: `create_category`, `update_category`, `delete_category`
+- **Tag write tools**: `create_tag`, `update_tag`, `delete_tag`
+
+**Tool count after removals: 30** (was 45)
+
+---
+
 ## [Unreleased] - 2025-01-05
 
 ### 🎉 Major Feature Additions
