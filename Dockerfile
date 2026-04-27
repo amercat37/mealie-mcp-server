@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir \
     "mcp[cli]>=1.12.0" \
     "pydantic>=2.11.3" \
     "python-dotenv>=1.1.0" \
-    "authlib>=1.3.0"
+    "joserfc>=1.0.0"
 
 COPY src ./src
 
