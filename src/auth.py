@@ -72,7 +72,7 @@ class AuthentikTokenVerifier:
             jwks_data = await _get_jwks(jwks_uri)
             key_set = JsonWebKey.import_key_set(jwks_data)
             claims = jwt.decode(token, key_set)
-            claims.validate_exp()
+            claims.validate_exp(int(time.time()), 0)
             claims.validate_iss(self._issuer)
             if self._audience:
                 claims.validate_aud(self._audience)
