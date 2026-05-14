@@ -1,6 +1,6 @@
 # Tests
 
-Two test scripts covering all 53 MCP tools at two layers.
+Two test scripts covering all 51 MCP tools at two layers.
 
 ## Setup
 
@@ -38,10 +38,10 @@ python tests/test_mcp_server.py
 ```
 
 **What it tests:**
-- All 53 tools are registered (`session.list_tools()`)
+- All 51 tools are registered (`session.list_tools()`)
 - Every tool can be called and returns a valid response
-- Restricted delete guards reject non-test slugs/names
-- Full create → read → update → delete cycle via MCP tool calls
+- Full create → read → update cycle via MCP tool calls
+- Cleanup of test artifacts via direct fetcher calls (delete is not an MCP tool)
 
 **Requirements:**
 - MCP server running in Docker (`docker compose -f tests/docker-compose.yml up -d --build`)
@@ -50,7 +50,7 @@ python tests/test_mcp_server.py
 
 ## Test naming convention
 
-All test artifacts use `__test_*` naming so they are visually obvious in the Mealie UI and the restricted delete guards can identify them:
+All test artifacts use `__test_*` naming so they are visually obvious in the Mealie UI:
 
 | Artifact | Name |
 |----------|------|
@@ -60,12 +60,3 @@ All test artifacts use `__test_*` naming so they are visually obvious in the Mea
 | Food B | `__test_food_b__` |
 | Shopping list | `__test_shopping_list__` |
 | Meal plan | date `2099-01-01` |
-
-## Restricted delete tools
-
-Two tools exist exclusively for the test suite:
-
-- `delete_test_recipe(slug)` — only deletes slugs starting with `test-`
-- `delete_test_food(food_id)` — looks up the food, only deletes if name starts with `__test_`
-
-Any attempt to use these tools on real data is rejected with an error.

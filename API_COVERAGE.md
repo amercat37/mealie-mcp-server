@@ -6,21 +6,21 @@ This document compares the MCP server implementation against the official Mealie
 
 | Category | Total Endpoints | Implemented Tools | Coverage |
 |----------|----------------|-------------|----------|
-| Recipe Operations | 14 | 7 | 50% |
+| Recipe Operations | 14 | 6 | 43% |
 | Recipe Advanced Features | 8 | 6 | 75% |
 | Shopping Lists | 17 | 17 | 100% |
 | Categories | 6 | 4 | 67% |
 | Tags | 6 | 4 | 67% |
 | Meal Plans | 7 | 6 | 86% |
-| Foods | 7 | 5 | 71% |
+| Foods | 7 | 4 | 57% |
 | Household Management | 8 | 1 | 13% |
 | Organizer Extras | 6 | 3 | 50% |
 | Admin & User Management | 8 | 0 | 0% |
-| **Total** | **87** | **53** | **61%** |
+| **Total** | **87** | **51** | **59%** |
 
 ## Detailed Coverage
 
-### ✅ Recipe Operations (7/14 implemented)
+### ✅ Recipe Operations (6/14 implemented)
 
 **Implemented:**
 - ✅ `GET /api/recipes` - Search and filter the recipe library with pagination and advanced filtering
@@ -29,9 +29,9 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `PATCH /api/recipes/{slug}/last-made` - Record today's date as the last time this recipe was made
 - ✅ `POST /api/recipes` + `PATCH /api/recipes/{slug}` - Create a fully populated recipe in one tool call (POST skeleton + PATCH all fields)
 - ✅ `POST /api/recipes/{slug}/duplicate` - Clone a recipe under a new name
-- ✅ `DELETE /api/recipes/{slug}` - Delete a recipe (restricted to `test-*` slugs — test suite only)
 
 **Not Implemented:**
+- 🚫 `DELETE /api/recipes/{slug}` - Delete a recipe (used internally by the test suite via the fetcher; not exposed as an MCP tool)
 - 🚫 `PUT /api/recipes/{slug}` - Replace all fields of an existing recipe with a new version
 - 🚫 `PATCH /api/recipes/{slug}` - Update individual recipe fields without replacing the whole record
 - 🚫 `POST /api/recipes/{slug}/image` - Scrape and attach an image to a recipe from a URL
@@ -95,16 +95,16 @@ This document compares the MCP server implementation against the official Mealie
 - 🚫 `PUT /api/organizers/tags/{id}` - Rename or update a tag
 - 🚫 `DELETE /api/organizers/tags/{id}` - Delete a tag
 
-### ✅ Foods (5/7 implemented)
+### ✅ Foods (4/7 implemented)
 
 **Implemented:**
 - ✅ `GET /api/foods` - Search and list foods used in recipe ingredients
 - ✅ `GET /api/foods/{id}` - Fetch a single food entry by ID
 - ✅ `POST /api/foods` - Add a new food to the ingredient food library
 - ✅ `PUT /api/foods/merge` - Merge a duplicate food entry into a canonical one
-- ✅ `DELETE /api/foods/{id}` - Delete a food entry (restricted to `__test_*` names — test suite only)
 
 **Not Implemented:**
+- 🚫 `DELETE /api/foods/{id}` - Delete a food entry (used internally by the test suite via the fetcher; not exposed as an MCP tool)
 - 🚫 `GET /api/foods/empty` - Not exposed by Mealie's API (endpoint does not exist)
 - 🚫 `PUT /api/foods/{id}` - Update a food entry's name or attributes
 

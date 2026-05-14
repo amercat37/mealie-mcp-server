@@ -394,33 +394,6 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
-    def delete_test_recipe(slug: str) -> Dict[str, Any]:
-        """Delete a test recipe. RESTRICTED — only works on slugs that start with 'test-'.
-
-        Used exclusively by the automated test suite to clean up recipes created
-        during testing (e.g. 'test-recipe', 'test-recipe-copy').
-        Any other slug will be rejected immediately.
-
-        Args:
-            slug: Slug of the test recipe to delete (must start with 'test-')
-
-        Returns:
-            Dict[str, Any]: Confirmation of deletion
-        """
-        if not slug.startswith("test-"):
-            raise ToolError(
-                f"delete_test_recipe is restricted to slugs starting with 'test-'. Got: '{slug}'"
-            )
-        try:
-            logger.info({"message": "Deleting test recipe", "slug": slug})
-            return mealie.delete_recipe(slug)
-        except Exception as e:
-            error_msg = f"Error deleting test recipe '{slug}': {str(e)}"
-            logger.error({"message": error_msg})
-            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
-            raise ToolError(error_msg)
-
-    @mcp.tool()
     def mark_recipe_last_made(slug: str) -> Dict[str, Any]:
         """Mark a recipe as having been made today (updates last made timestamp).
 

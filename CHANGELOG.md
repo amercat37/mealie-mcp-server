@@ -4,6 +4,16 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.2] — 2026-05-14
+
+### Changed
+
+- `delete_test_recipe` and `delete_test_food` removed from MCP tool registration — these were only ever used by the test suite, which now calls `MealieFetcher.delete_recipe()` / `delete_food()` directly; the underlying mixin methods are unchanged
+- `tests/test_mcp_server.py` — pre-test cleanup and post-test cleanup now use the fetcher directly instead of calling MCP tools; guard tests removed (no MCP tools to guard)
+- Tool count: 53 → 51; API coverage updated accordingly in `API_COVERAGE.md`, `USAGE_EXAMPLES.md`, and `tests/README.md`
+
+---
+
 ## [1.4.1] — 2026-05-14
 
 ### Fixed
@@ -16,7 +26,7 @@ All notable changes to this project will be documented here.
 ### Changed
 
 - `src/prompts.py` (`recipe_builder`) — Step 3 now instructs the assistant to call `get_labels` and assign a `label_id` (shopping list aisle) when creating a new food entry
-- `USAGE_EXAMPLES.md` — added sections for all tools and prompts introduced in v1.3.0 and v1.4.0: `recipe_builder` prompt, `create_recipe`, `duplicate_recipe`, `delete_test_recipe`, `get_empty_categories`, `get_empty_tags`, `create_food`, `merge_foods`, `delete_test_food`
+- `USAGE_EXAMPLES.md` — added sections for all tools and prompts introduced in v1.3.0 and v1.4.0: `recipe_builder` prompt, `create_recipe`, `duplicate_recipe`, `get_empty_categories`, `get_empty_tags`, `create_food`, `merge_foods`
 
 ---
 
@@ -36,7 +46,7 @@ All notable changes to this project will be documented here.
 
 ### Changed
 
-- API coverage: 51 → 53 tools (restricted deletes counted separately from production tools)
+- API coverage: 51 tools (restricted delete tools removed from MCP registration; test suite calls the fetcher directly)
 
 ---
 

@@ -329,12 +329,6 @@ Clones an existing recipe under a new name. Use this before making significant v
 
 ---
 
-### delete_test_recipe — DELETE /api/recipes/{slug} *(test suite only)*
-
-Restricted delete for the automated test suite. Only accepts slugs starting with `test-`. Rejects all other slugs immediately. Not intended for use outside of `tests/test_fetcher.py` and `tests/test_mcp_server.py`.
-
----
-
 ## Shopping List Tools
 
 ### get_shopping_lists — GET /api/households/shopping/lists
@@ -706,12 +700,6 @@ Merges a duplicate food into a canonical entry. All recipe references to the sou
 "Consolidate 'roma tomatoes' and 'roma tomato' into one entry"
 "Merge the duplicate garlic entries"
 ```
-
----
-
-### delete_test_food — DELETE /api/foods/{id} *(test suite only)*
-
-Restricted delete for the automated test suite. Looks up the food by ID, verifies the name starts with `__test_`, then deletes it. Rejects all other food entries immediately. Not intended for use outside of `tests/test_fetcher.py` and `tests/test_mcp_server.py`.
 
 ---
 

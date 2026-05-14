@@ -26,6 +26,15 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env.testing"))
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from mealie import MealieFetcher
+
+_mealie = MealieFetcher(
+    base_url=os.environ["MEALIE_BASE_URL"],
+    api_key=os.environ["MEALIE_API_KEY"],
+)
+
 log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
 logging.basicConfig(
     level=log_level,
@@ -59,7 +68,7 @@ def section(title: str) -> None:
 EXPECTED_TOOLS = {
     # Recipes
     "get_recipes", "get_recipe_detailed", "get_recipe_concise",
-    "create_recipe", "duplicate_recipe", "delete_test_recipe",
+    "create_recipe", "duplicate_recipe",
     "mark_recipe_last_made",
     "get_recipe_comments", "create_recipe_comment",
     "get_recipe_timeline",
@@ -71,7 +80,7 @@ EXPECTED_TOOLS = {
     "get_tags", "get_tag", "get_tag_by_slug", "get_empty_tags",
     # Foods
     "get_foods", "get_food",
-    "create_food", "merge_foods", "delete_test_food",
+    "create_food", "merge_foods",
     # Organizers
     "get_cooking_tools", "get_units", "get_labels",
     # Cookbooks
@@ -101,23 +110,20 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     for slug in ["test-recipe-copy", "test-recipe"]:
         try:
-            await session.call_tool("delete_test_recipe", {"slug": slug})
+            _mealie.delete_recipe(slug)
             print(f"  [cleanup] deleted stale recipe: {slug}")
         except Exception:
             pass
 
     try:
-        r = await session.call_tool("get_foods", {"search": "__test_food", "per_page": 50})
-        import re, json as _json
-        text = r.content[0].text if r.content else ""
-        food_ids = re.findall(r'"id":\s*"([^"]+)"', text)
-        food_names = re.findall(r'"name":\s*"(__test_[^"]+)"', text)
-        for fid in food_ids[:len(food_names)]:
-            try:
-                await session.call_tool("delete_test_food", {"food_id": fid})
-                print(f"  [cleanup] deleted stale food: {fid}")
-            except Exception:
-                pass
+        foods = _mealie.get_foods(search="__test_food", per_page=50)
+        for f in foods.get("items", []):
+            if f.get("name", "").startswith("__test_"):
+                try:
+                    _mealie.delete_food(f["id"])
+                    print(f"  [cleanup] deleted stale food: {f['name']}")
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -127,7 +133,7 @@ async def run(session: ClientSession) -> None:
     tools_response = await session.list_tools()
     registered = {t.name for t in tools_response.tools}
 
-    check("tool count >= 53", len(registered) >= 53, f"got {len(registered)}")
+    check("tool count >= 51", len(registered) >= 51, f"got {len(registered)}")
 
     missing = EXPECTED_TOOLS - registered
     extra = registered - EXPECTED_TOOLS
@@ -555,37 +561,22 @@ async def run(session: ClientSession) -> None:
             check("delete_mealplan", False, str(e))
 
     # -----------------------------------------------------------------------
-    section("Restricted delete guards")
-    # -----------------------------------------------------------------------
-    try:
-        r = await session.call_tool("delete_test_recipe", {"slug": "real-recipe-slug"})
-        check("delete_test_recipe guard (should reject)", getattr(r, "isError", False), "guard did not fire")
-    except Exception as e:
-        check("delete_test_recipe guard (should reject)", "restricted" in str(e).lower() or "test-" in str(e).lower())
-
-    try:
-        r = await session.call_tool("delete_test_food", {"food_id": "00000000-0000-0000-0000-000000000000"})
-        check("delete_test_food guard (should reject non-test food)", getattr(r, "isError", False), "guard did not fire")
-    except Exception as e:
-        check("delete_test_food guard (should reject non-test food)", True, "rejected as expected")
-
-    # -----------------------------------------------------------------------
     section("Cleanup — test recipes and foods")
     # -----------------------------------------------------------------------
     for slug in [state.get("recipe_copy_slug", "test-recipe-copy"), state.get("recipe_slug", "test-recipe")]:
         if slug:
             try:
-                r = await session.call_tool("delete_test_recipe", {"slug": slug})
-                check(f"cleanup delete_test_recipe ({slug})", r.content is not None)
+                r = _mealie.delete_recipe(slug)
+                check(f"cleanup delete_recipe ({slug})", isinstance(r, dict))
             except Exception as e:
-                check(f"cleanup delete_test_recipe ({slug})", False, str(e))
+                check(f"cleanup delete_recipe ({slug})", False, str(e))
 
     if state.get("food_a_id"):
         try:
-            r = await session.call_tool("delete_test_food", {"food_id": state["food_a_id"]})
-            check(f"cleanup delete_test_food (food_a)", r.content is not None)
+            r = _mealie.delete_food(state["food_a_id"])
+            check(f"cleanup delete_food (food_a)", isinstance(r, dict))
         except Exception as e:
-            check(f"cleanup delete_test_food (food_a)", False, str(e))
+            check(f"cleanup delete_food (food_a)", False, str(e))
 
     # -----------------------------------------------------------------------
     section("Summary")
