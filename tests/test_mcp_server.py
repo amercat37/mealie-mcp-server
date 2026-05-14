@@ -517,6 +517,14 @@ async def run(session: ClientSession) -> None:
             check(tool, False, str(e))
 
     try:
+        r = await session.call_tool("create_mealplan_bulk", {
+            "entries": [{"date": "2099-01-03", "entry_type": "lunch", "title": "__test_bulk_mealplan__"}]
+        })
+        check("create_mealplan_bulk", r.content is not None)
+    except Exception as e:
+        check("create_mealplan_bulk", False, str(e))
+
+    try:
         r = await session.call_tool("create_mealplan", {
             "date": "2099-01-01", "entry_type": "dinner", "title": "__test_mealplan__"
         })
