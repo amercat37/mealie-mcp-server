@@ -70,7 +70,7 @@ EXPECTED_TOOLS = {
     # Tags
     "get_tags", "get_tag", "get_tag_by_slug", "get_empty_tags",
     # Foods
-    "get_foods", "get_food", "get_empty_foods",
+    "get_foods", "get_food",
     "create_food", "merge_foods", "delete_test_food",
     # Organizers
     "get_cooking_tools", "get_units", "get_labels",
@@ -97,12 +97,37 @@ async def run(session: ClientSession) -> None:
     state: dict = {}
 
     # -----------------------------------------------------------------------
+    section("Pre-test cleanup — remove stale test artifacts")
+    # -----------------------------------------------------------------------
+    for slug in ["test-recipe-copy", "test-recipe"]:
+        try:
+            await session.call_tool("delete_test_recipe", {"slug": slug})
+            print(f"  [cleanup] deleted stale recipe: {slug}")
+        except Exception:
+            pass
+
+    try:
+        r = await session.call_tool("get_foods", {"search": "__test_food", "per_page": 50})
+        import re, json as _json
+        text = r.content[0].text if r.content else ""
+        food_ids = re.findall(r'"id":\s*"([^"]+)"', text)
+        food_names = re.findall(r'"name":\s*"(__test_[^"]+)"', text)
+        for fid in food_ids[:len(food_names)]:
+            try:
+                await session.call_tool("delete_test_food", {"food_id": fid})
+                print(f"  [cleanup] deleted stale food: {fid}")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # -----------------------------------------------------------------------
     section("Tool registration")
     # -----------------------------------------------------------------------
     tools_response = await session.list_tools()
     registered = {t.name for t in tools_response.tools}
 
-    check("tool count >= 54", len(registered) >= 54, f"got {len(registered)}")
+    check("tool count >= 53", len(registered) >= 53, f"got {len(registered)}")
 
     missing = EXPECTED_TOOLS - registered
     extra = registered - EXPECTED_TOOLS
@@ -301,7 +326,6 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     for tool, args in [
         ("get_foods", {"per_page": 5}),
-        ("get_empty_foods", {}),
     ]:
         try:
             r = await session.call_tool(tool, args)
@@ -429,6 +453,33 @@ async def run(session: ClientSession) -> None:
                     "items": [{"id": iid, "shoppingListId": lid, "note": "__test_item__", "checked": False}]
                 }),
                 ("delete_shopping_list_item", {"item_id": iid}),
+            ]:
+                try:
+                    r = await session.call_tool(tool, args)
+                    check(tool, r.content is not None)
+                except Exception as e:
+                    check(tool, False, str(e))
+
+        # Recipe integration — get recipe UUID for shopping list recipe tests
+        try:
+            r = await session.call_tool("get_recipe_detailed", {"slug": slug})
+            text = r.content[0].text if r.content else ""
+            import re
+            ids = re.findall(r'"id":\s*"([^"]+)"', text)
+            if ids:
+                state["recipe_id"] = ids[0]
+        except Exception:
+            pass
+
+        if state.get("recipe_id"):
+            rid = state["recipe_id"]
+            for tool, args in [
+                ("add_recipe_to_shopping_list", {"list_id": lid, "recipe_id": rid}),
+                ("remove_recipe_from_shopping_list", {"list_id": lid, "recipe_id": rid}),
+                ("add_recipes_to_shopping_list_bulk", {
+                    "list_id": lid,
+                    "recipes": [{"recipeId": rid, "recipeIncrementQuantity": 1}],
+                }),
             ]:
                 try:
                     r = await session.call_tool(tool, args)
