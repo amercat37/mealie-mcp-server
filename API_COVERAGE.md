@@ -4,19 +4,19 @@ This document compares the MCP server implementation against the official Mealie
 
 ## Summary
 
-| Category | Total Endpoints | Implemented | Coverage |
+| Category | Total Endpoints | Implemented Tools | Coverage |
 |----------|----------------|-------------|----------|
-| Recipe Operations | 20 | 10 | 50% |
-| Shopping Lists | 17 | 16 | 94% |
-| Categories | 5 | 4 | 80% |
-| Tags | 5 | 4 | 80% |
-| Meal Plans | 6 | 5 | 83% |
-| Foods | 5 | 2 | 40% |
+| Recipe Operations | 14 | 4 | 29% |
 | Recipe Advanced Features | 8 | 6 | 75% |
-| Household Management | 1 | 1 | 100% |
-| Organizer Extras | 3 | 3 | 100% |
-| Admin & User Management | — | 0 | — |
-| **Total Priority APIs** | **70** | **51** | **73%** |
+| Shopping Lists | 17 | 17 | 100% |
+| Categories | 6 | 3 | 50% |
+| Tags | 6 | 3 | 50% |
+| Meal Plans | 7 | 6 | 86% |
+| Foods | 5 | 2 | 40% |
+| Household Management | 8 | 1 | 13% |
+| Organizer Extras | 6 | 3 | 50% |
+| Admin & User Management | 8 | 0 | 0% |
+| **Total** | **85** | **45** | **53%** |
 
 ## Detailed Coverage
 

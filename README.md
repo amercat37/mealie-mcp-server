@@ -1,8 +1,6 @@
 # Mealie MCP Server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Mealie](https://github.com/mealie-recipes/mealie) that lets AI assistants like Claude and ChatGPT read your recipe database, manage shopping lists, and create meal plans — served over HTTP and secured with OAuth 2.0.
-
-> **Origin:** This project is based on [rldiao/mealie-mcp-server](https://github.com/rldiao/mealie-mcp-server). It extends that work with OAuth 2.0 bearer authentication via [Authentik](https://goauthentik.io/), Docker/HTTP transport support, and removes recipe write tools (create, update, delete). See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Mealie](https://github.com/mealie-recipes/mealie) that lets AI assistants like Claude and ChatGPT read your recipe database, manage shopping lists, create and edit meal plans, and guide you through cooking — served over HTTP and secured with OAuth 2.0.
 
 ## ✨ Features
 
@@ -13,24 +11,40 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 
 ### 🍽️ Recipe Management
 - **Advanced Search**: Filter by text, categories, tags, and tools with AND/OR logic
+- **Dual Detail Levels**: Concise summary for planning, full details for cooking
 - **Metadata Tracking**: Mark recipes as made, track last made dates
+- **Comments**: Read and write cooking notes per recipe
+- **Timeline**: View chronological cooking activity across all recipes
+- **Sharing**: Create and list public share links for any recipe
+- **Exports**: Get PDF and other export download links
 
 ### 🛒 Shopping Lists
-- **List Management**: Create, update, and delete shopping lists
+- **List Management**: Create, rename, and delete shopping lists
+- **Label Ordering**: Configure store-specific label order (match your store's aisle layout)
 - **Item Operations**: Add, update, check off, and remove items
 - **Bulk Operations**: Create, update, or delete multiple items at once
-- **Recipe Integration**: Automatically add recipe ingredients to shopping lists
+- **Recipe Integration**: Add one or many recipes' ingredients to a list at once
 
 ### 🏷️ Organization (read-only)
-- **Categories**: Organize recipes with categories (Breakfast, Dinner, etc.)
-- **Tags**: Tag recipes for easy filtering (Quick, Healthy, Family Favorite)
-- **Advanced Filtering**: Search and filter with full pagination support
-- **Empty Detection**: Find unused categories and tags
+- **Categories**: Browse recipe categories (Breakfast, Dinner, etc.)
+- **Tags**: Browse and filter by recipe tags
+- **Tools**: List cooking equipment tagged on recipes
+- **Units**: List units of measurement used in ingredients
+- **Labels**: List shopping list labels (grocery store sections)
+- **Cookbooks**: Browse curated recipe collections
 
 ### 📅 Meal Planning
-- **Meal Plans**: View and manage meal plans
+- **View & Create**: See all meal plans, today's menu, and add new entries
+- **Edit & Delete**: Update or remove individual meal plan entries
 - **Bulk Creation**: Add multiple meals at once
-- **Today's Menu**: Quick access to today's planned meals
+
+### 💬 Prompts
+Five built-in conversation starters that pre-configure the assistant for specific tasks:
+- **`weekly_meal_plan`**: Guided meal planning with tag filtering, sandwich rules, and leftover logic
+- **`shopping_trip`**: Consolidated shopping list from your meal plan, grouped by store section with cost estimates
+- **`cooking_session`**: Full recipe details, equipment, and cooking notes staged before you start cooking
+- **`weekly_review`**: Summary of what you've cooked and eaten, answers "what did I have last Wednesday?"
+- **`nutrition_summary`**: Caloric and macro breakdown from your meal plan's nutrition data
 
 ## 🚀 Installation
 
@@ -43,7 +57,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 ### Step 1 — Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone git@github.com:amercat37/mealie-mcp-server.git
 cd mealie-mcp-server
 ```
 
@@ -54,7 +68,7 @@ cp .env.template .env
 # Edit .env with your values
 ```
 
-Set the variables in `.env`. The `AUTHENTIK_JWKS_URI` + `AUTHENTIK_HOST` pair is only needed if Authentik and this server share a Docker network — it lets the server fetch signing keys from the internal address rather than going through the public domain (more efficient, avoids hairpin NAT issues).
+Set the variables in `.env`. The `AUTHENTIK_JWKS_URI` + `AUTHENTIK_HOST` pair is only needed if Authentik and this server share a Docker network — it lets the server fetch signing keys from the internal address rather than going through the public domain.
 
 ### Step 3 — Start the server
 
@@ -68,7 +82,7 @@ The server listens on port `8000` at `/mcp`. Configure your MCP client to connec
 
 Authentication is opt-in. If `AUTHENTIK_ISSUER` is not set, the server starts without any authentication — useful for local testing.
 
-When enabled, the server validates OAuth 2.0 bearer tokens issued by [Authentik](https://goauthentik.io/). Here is how the flow works in plain terms: your MCP client (Claude, ChatGPT, etc.) redirects you to your Authentik login page, you log in, and Authentik issues a token. The MCP server checks that token on every request to confirm who you are. Your Mealie API key never leaves the server.
+When enabled, the server validates OAuth 2.0 bearer tokens issued by [Authentik](https://goauthentik.io/). Your MCP client redirects you to your Authentik login page, you log in, and Authentik issues a token. The MCP server checks that token on every request. Your Mealie API key never leaves the server.
 
 #### Step 1 — Create a Provider in Authentik
 
@@ -79,12 +93,14 @@ In the Authentik admin UI go to **Applications → Providers → Create → OAut
 | Name | `mealie-mcp-server` |
 | Authorization flow | `default-provider-authorization-explicit-consent (Authorize Application)` |
 | Client type | `Confidential` |
-| Redirect URIs | Your MCP client's callback URL (see your client's OAuth setup docs)|
+| Redirect URIs | Your MCP client's callback URL (see your client's OAuth setup docs) |
 | Signing Key | Select any existing certificate, or create one under **System → Certificates** |
 
 Callback URI examples:
-`strict: https://claude.ai/api/mcp/auth_callback`
-`strict: https://chatgpt.com/connector/oauth/<your-connector-id>`
+```
+strict: https://claude.ai/api/mcp/auth_callback
+strict: https://chatgpt.com/connector/oauth/<your-connector-id>
+```
 
 Save the provider. On the detail page, note the **OpenID Configuration Issuer** URL — it looks like:
 
@@ -108,7 +124,7 @@ Save.
 
 #### Step 3 — Create and Assign a User
 
-By default, all Authentik users can access the application. To restrict access, create a user and open the application → **Policy / Group / User Bindings** tab → **Bind existing policy/group/user** and add the specific users or groups you want to allow.
+By default, all Authentik users can access the application. To restrict access, open the application → **Policy / Group / User Bindings** tab → **Bind existing policy/group/user** and add the specific users or groups you want to allow.
 
 ### Project Structure
 
@@ -123,6 +139,8 @@ mealie-mcp-server/
 │   │   ├── tags.py          # Tag operations
 │   │   ├── mealplan.py      # Meal plan operations
 │   │   ├── foods.py         # Food operations
+│   │   ├── cookbooks.py     # Cookbook operations
+│   │   ├── organizers.py    # Tools, units, and labels
 │   │   └── __init__.py      # MealieFetcher aggregator
 │   ├── tools/               # MCP tool definitions
 │   │   ├── recipe_tools.py
@@ -131,6 +149,8 @@ mealie-mcp-server/
 │   │   ├── tags_tools.py
 │   │   ├── mealplan_tools.py
 │   │   ├── foods_tools.py
+│   │   ├── cookbooks_tools.py
+│   │   ├── organizers_tools.py
 │   │   └── __init__.py
 │   ├── models/              # Pydantic models
 │   │   ├── mealplan.py
@@ -139,6 +159,11 @@ mealie-mcp-server/
 │   ├── server.py            # MCP server entry point
 │   ├── prompts.py           # Server prompts
 │   └── utils.py             # Shared utilities
+├── .github/
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── ISSUE_TEMPLATE/
+│       ├── bug_report.md
+│       └── feature_request.md
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.template
@@ -164,6 +189,15 @@ When filtering recipes, you **must use slugs or UUIDs**, not display names:
 
 Use `get_tags()` or `get_categories()` first to find the correct slugs.
 
+### Recipe Detail Levels
+
+Two tools fetch recipe data — use the right one for the task:
+
+| Tool | Use when |
+|---|---|
+| `get_recipe_concise` | Meal planning, quick lookups, listing ingredients |
+| `get_recipe_detailed` | Cooking, nutrition calculation, full instructions |
+
 ### Field Preservation
 
 When updating shopping list items, the server automatically preserves all existing fields. You only need to specify the fields you want to change:
@@ -173,14 +207,9 @@ When updating shopping list items, the server automatically preserves all existi
 update_shopping_list_item(item_id="...", checked=True)
 ```
 
-## 🐛 Known Issues
-
-None known. Tested end-to-end with Claude and ChatGPT.
-
 ## 🔄 Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes and version history.
-
 
 ## 🔮 Future Enhancements
 
@@ -194,12 +223,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Credits
-
-- Based on the original [mealie-mcp-server](https://github.com/rldiao/mealie-mcp-server) by [@rldiao](https://github.com/rldiao)
-- [Mealie](https://github.com/mealie-recipes/mealie) - The recipe management system
-- [FastMCP](https://github.com/jlowin/fastmcp) - The MCP framework
 
 ## 📞 Support
 
