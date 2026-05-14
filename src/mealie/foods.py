@@ -66,15 +66,6 @@ class FoodsMixin:
         logger.info({"message": "Retrieving food", "item_id": item_id})
         return self._handle_request("GET", f"/api/foods/{item_id}")
 
-    def get_empty_foods(self) -> Dict[str, Any]:
-        """Get foods not referenced by any recipe ingredient.
-
-        Returns:
-            JSON response containing unused food entries
-        """
-        logger.info({"message": "Retrieving empty foods"})
-        return self._handle_request("GET", "/api/foods/empty")
-
     def create_food(self, name: str, label_id: Optional[str] = None) -> Dict[str, Any]:
         """Add a new food to the ingredient food library.
 

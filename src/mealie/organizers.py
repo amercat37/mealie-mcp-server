@@ -43,7 +43,7 @@ class OrganizersMixin:
         """
         params = format_api_params({"page": page, "perPage": per_page})
         logger.info({"message": "Retrieving units of measurement"})
-        return self._handle_request("GET", "/api/organizers/units", params=params)
+        return self._handle_request("GET", "/api/units", params=params)
 
     def get_organizer_labels(
         self,
@@ -61,4 +61,4 @@ class OrganizersMixin:
         """
         params = format_api_params({"page": page, "perPage": per_page})
         logger.info({"message": "Retrieving shopping list labels"})
-        return self._handle_request("GET", "/api/organizers/labels", params=params)
+        return self._handle_request("GET", "/api/groups/labels", params=params)

@@ -272,8 +272,10 @@ class RecipeMixin:
         if not text:
             raise ValueError("Comment text cannot be empty")
 
+        recipe = self.get_recipe(slug)
+        recipe_id = recipe["id"]
         logger.info({"message": "Creating recipe comment", "slug": slug})
-        return self._handle_request("POST", f"/api/recipes/{slug}/comments", json={"text": text})
+        return self._handle_request("POST", "/api/comments", json={"recipeId": recipe_id, "text": text})
 
     def get_recipe_timeline(
         self,
@@ -293,7 +295,7 @@ class RecipeMixin:
         params = format_api_params(param_dict)
 
         logger.info({"message": "Retrieving recipe timeline"})
-        return self._handle_request("GET", "/api/recipes/timeline", params=params)
+        return self._handle_request("GET", "/api/recipes/timeline/events", params=params)
 
     def get_recipe_share_tokens(self, slug: str) -> List[Dict[str, Any]]:
         """Get all share tokens for a recipe.
@@ -307,8 +309,13 @@ class RecipeMixin:
         if not slug:
             raise ValueError("Recipe slug cannot be empty")
 
+        recipe = self.get_recipe(slug)
+        recipe_id = recipe["id"]
+        all_tokens = self._handle_request("GET", "/api/shared/recipes")
+        if isinstance(all_tokens, list):
+            return [t for t in all_tokens if t.get("recipeId") == recipe_id]
         logger.info({"message": "Retrieving recipe share tokens", "slug": slug})
-        return self._handle_request("GET", f"/api/recipes/{slug}/share")
+        return all_tokens
 
     def create_recipe_share_token(self, slug: str) -> Dict[str, Any]:
         """Create a public share link for a recipe.
@@ -322,23 +329,33 @@ class RecipeMixin:
         if not slug:
             raise ValueError("Recipe slug cannot be empty")
 
+        recipe = self.get_recipe(slug)
+        recipe_id = recipe["id"]
         logger.info({"message": "Creating recipe share token", "slug": slug})
-        return self._handle_request("POST", f"/api/recipes/{slug}/share", json={})
+        return self._handle_request("POST", "/api/shared/recipes", json={"recipeId": recipe_id})
 
     def get_recipe_exports(self, slug: str) -> Dict[str, Any]:
-        """Get available export formats and download links for a recipe.
+        """Get available export formats and download URLs for a recipe.
 
         Args:
             slug: The slug identifier of the recipe
 
         Returns:
-            JSON response containing available export formats and URLs
+            Dict with available format names and their download URLs
         """
         if not slug:
             raise ValueError("Recipe slug cannot be empty")
 
         logger.info({"message": "Retrieving recipe exports", "slug": slug})
-        return self._handle_request("GET", f"/api/recipes/{slug}/exports")
+        templates = self._handle_request("GET", "/api/recipes/exports")
+        download_urls = {
+            fmt: [
+                f"{self.base_url}/api/recipes/{slug}/exports?template_name={t}"
+                for t in names
+            ]
+            for fmt, names in templates.items()
+        }
+        return {"formats": templates, "download_urls": download_urls}
 
     def delete_recipe(self, slug: str) -> Dict[str, Any]:
         """Delete a recipe

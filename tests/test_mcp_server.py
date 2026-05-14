@@ -11,8 +11,8 @@ Requires the MCP server to be running in Docker before executing:
 
 Usage:
     cd mealie-mcp-server
-    cp .env.testing.template .env.testing
-    # edit .env.testing with your values
+    cp tests/.env.testing.template tests/.env.testing
+    # edit tests/.env.testing with your values
     docker compose up -d
     python tests/test_mcp_server.py
 """
@@ -24,7 +24,7 @@ import sys
 
 from dotenv import load_dotenv
 
-load_dotenv(".env.testing")
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env.testing"))
 
 log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
 logging.basicConfig(

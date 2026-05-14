@@ -129,14 +129,15 @@ class MealplanMixin:
         if not date:
             raise ValueError("Date cannot be empty")
 
-        payload = {"date": date, "entryType": entry_type}
-        if recipe_id:
-            payload["recipeId"] = recipe_id
-        if title:
-            payload["title"] = title
-
         logger.info({"message": "Updating mealplan entry", "entry_id": entry_id})
-        return self._handle_request("PUT", f"/api/households/mealplans/{entry_id}", json=payload)
+        current = self._handle_request("GET", f"/api/households/mealplans/{entry_id}")
+        updates: Dict[str, Any] = {"date": date, "entryType": entry_type}
+        if recipe_id:
+            updates["recipeId"] = recipe_id
+        if title:
+            updates["title"] = title
+        merged = {**current, **updates}
+        return self._handle_request("PUT", f"/api/households/mealplans/{entry_id}", json=merged)
 
     def delete_mealplan(self, entry_id: str) -> Dict[str, Any]:
         """Delete a mealplan entry.

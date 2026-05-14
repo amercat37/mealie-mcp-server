@@ -28,6 +28,7 @@ class MealieClient:
             raise ValueError("API key cannot be empty")
 
         logger.debug({"message": "Initializing MealieClient", "base_url": base_url})
+        self.base_url = base_url.rstrip("/")
         try:
             self._client = httpx.Client(
                 base_url=base_url,

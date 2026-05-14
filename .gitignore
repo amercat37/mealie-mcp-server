@@ -130,8 +130,9 @@ celerybeat.pid
 # Environments
 .env
 .env.*
+tests/.env.*
 !.env.template
-!.env.testing.template
+!tests/.env.testing.template
 .venv
 env/
 venv/

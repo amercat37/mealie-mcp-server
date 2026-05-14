@@ -5,8 +5,8 @@ Two test scripts covering all 54 MCP tools at two layers.
 ## Setup
 
 ```bash
-cp .env.testing.template .env.testing
-# Edit .env.testing with your Mealie URL and a temporary API key
+cp tests/.env.testing.template tests/.env.testing
+# Edit tests/.env.testing with your Mealie URL and a temporary API key
 ```
 
 Create the temporary API key in Mealie under **Profile → API Tokens**. Delete it after testing.
@@ -25,7 +25,7 @@ python tests/test_fetcher.py
 - Cleanup of all test artifacts using `__test_*` naming convention
 
 **Requirements:**
-- `MEALIE_BASE_URL` and `MEALIE_API_KEY` set in `.env.testing`
+- `MEALIE_BASE_URL` and `MEALIE_API_KEY` set in `tests/.env.testing`
 - External Mealie address (not internal Docker network)
 
 ## Script 2 — MCP Server (`test_mcp_server.py`)
@@ -45,7 +45,7 @@ python tests/test_mcp_server.py
 
 **Requirements:**
 - MCP server running in Docker (`docker compose up -d`)
-- `MCP_SERVER_URL` set in `.env.testing` (default: `http://localhost:8000/mcp`)
+- `MCP_SERVER_URL` set in `tests/.env.testing` (default: `http://localhost:8000/mcp`)
 - Server's own `.env` must have valid `MEALIE_BASE_URL` and `MEALIE_API_KEY`
 
 ## Test naming convention

@@ -58,23 +58,6 @@ def register_foods_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
-    def get_empty_foods() -> Dict[str, Any]:
-        """List foods in the library that are not referenced by any recipe ingredient.
-        Use this to find and clean up stale or duplicate food entries.
-
-        Returns:
-            Dict[str, Any]: Unused food entries
-        """
-        try:
-            logger.info({"message": "Fetching empty foods"})
-            return mealie.get_empty_foods()
-        except Exception as e:
-            error_msg = f"Error fetching empty foods: {str(e)}"
-            logger.error({"message": error_msg})
-            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
-            raise ToolError(error_msg)
-
-    @mcp.tool()
     def create_food(name: str, label_id: Optional[str] = None) -> Dict[str, Any]:
         """Add a new food to the ingredient food library.
 

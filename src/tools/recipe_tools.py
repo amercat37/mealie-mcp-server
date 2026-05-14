@@ -340,7 +340,10 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "tags": resolved_tags,
                 "tools": resolved_tools,
                 "recipeIngredient": resolved_ingredients,
-                "recipeInstructions": [i.model_dump(exclude_none=True) for i in recipe.recipeInstructions],
+                "recipeInstructions": [
+                    {"title": i.title or "", "text": i.text, "summary": "", "ingredientReferences": []}
+                    for i in recipe.recipeInstructions
+                ],
             }
             if recipe.description:
                 patch_data["description"] = recipe.description
