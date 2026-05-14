@@ -6,17 +6,17 @@ This document compares the MCP server implementation against the official Mealie
 
 | Category | Total Endpoints | Implemented Tools | Coverage |
 |----------|----------------|-------------|----------|
-| Recipe Operations | 14 | 6 | 43% |
+| Recipe Operations | 14 | 8 | 57% |
 | Recipe Advanced Features | 8 | 6 | 75% |
 | Shopping Lists | 17 | 17 | 100% |
 | Categories | 6 | 4 | 67% |
 | Tags | 6 | 4 | 67% |
 | Meal Plans | 7 | 6 | 86% |
-| Foods | 7 | 5 | 71% |
+| Foods | 7 | 6 | 86% |
 | Household Management | 8 | 1 | 13% |
 | Organizer Extras | 6 | 3 | 50% |
 | Admin & User Management | 8 | 0 | 0% |
-| **Total** | **87** | **52** | **60%** |
+| **Total** | **87** | **54** | **62%** |
 
 ## Detailed Coverage
 
@@ -29,6 +29,7 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `PATCH /api/recipes/{slug}/last-made` - Record today's date as the last time this recipe was made
 - ✅ `POST /api/recipes` + `PATCH /api/recipes/{slug}` - Create a fully populated recipe in one tool call (POST skeleton + PATCH all fields)
 - ✅ `POST /api/recipes/{slug}/duplicate` - Clone a recipe under a new name
+- ✅ `DELETE /api/recipes/{slug}` - Delete a recipe (restricted to `test-*` slugs — test suite only)
 
 **Not Implemented:**
 - 🚫 `PUT /api/recipes/{slug}` - Replace all fields of an existing recipe with a new version
@@ -103,10 +104,10 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `GET /api/foods/empty` - List foods not referenced by any recipe ingredient
 - ✅ `POST /api/foods` - Add a new food to the ingredient food library
 - ✅ `PUT /api/foods/merge` - Merge a duplicate food entry into a canonical one
+- ✅ `DELETE /api/foods/{id}` - Delete a food entry (restricted to `__test_*` names — test suite only)
 
 **Not Implemented:**
 - 🚫 `PUT /api/foods/{id}` - Update a food entry's name or attributes
-- 🚫 `DELETE /api/foods/{id}` - Remove a food from the library
 
 ### ✅ Meal Plans (5/6 implemented)
 
