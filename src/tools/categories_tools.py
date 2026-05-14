@@ -74,4 +74,21 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)
 
+    @mcp.tool()
+    def get_empty_categories() -> Dict[str, Any]:
+        """List categories that have no recipes assigned. Use this to find and
+        clean up stale or unused category entries.
+
+        Returns:
+            Dict[str, Any]: Categories with no associated recipes
+        """
+        try:
+            logger.info({"message": "Fetching empty categories"})
+            return mealie.get_empty_categories()
+        except Exception as e:
+            error_msg = f"Error fetching empty categories: {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
 

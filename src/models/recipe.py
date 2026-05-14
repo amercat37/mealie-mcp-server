@@ -7,6 +7,38 @@ class RecipeCommentCreate(BaseModel):
     text: str
 
 
+class RecipeIngredientCreate(BaseModel):
+    quantity: Optional[float] = None
+    unit: Optional[str] = None  # unit name — tool resolves to ID
+    food: Optional[str] = None  # food name — tool resolves to ID
+    note: Optional[str] = None
+    title: Optional[str] = None  # section header e.g. "For the sauce:"
+    disableAmount: bool = False
+
+
+class RecipeInstructionCreate(BaseModel):
+    title: Optional[str] = None  # section header e.g. "Make the dough"
+    text: str
+
+
+class RecipeCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    recipeCategory: List[str] = Field(default_factory=list)  # category slugs
+    tags: List[str] = Field(default_factory=lambda: ["my-recipes"])  # tag slugs; default my-recipes
+    tools: List[str] = Field(default_factory=list)  # tool slugs
+    recipeIngredient: List[RecipeIngredientCreate] = Field(default_factory=list)
+    recipeInstructions: List[RecipeInstructionCreate] = Field(default_factory=list)
+    prepTime: Optional[str] = None  # ISO 8601 e.g. "PT30M"
+    performTime: Optional[str] = None  # active cook time
+    totalTime: Optional[str] = None
+    recipeYield: Optional[str] = None  # e.g. "4 servings"
+    recipeServings: Optional[int] = None
+    orgURL: Optional[str] = None  # source URL if recipe came from somewhere
+    nutrition: Optional["RecipeNutrition"] = None
+    notes: Optional[List[Dict[str, str]]] = None  # [{"title": "...", "text": "..."}]
+
+
 class RecipeComment(BaseModel):
     id: Optional[str] = None
     recipeId: Optional[str] = None

@@ -65,3 +65,55 @@ class FoodsMixin:
 
         logger.info({"message": "Retrieving food", "item_id": item_id})
         return self._handle_request("GET", f"/api/foods/{item_id}")
+
+    def get_empty_foods(self) -> Dict[str, Any]:
+        """Get foods not referenced by any recipe ingredient.
+
+        Returns:
+            JSON response containing unused food entries
+        """
+        logger.info({"message": "Retrieving empty foods"})
+        return self._handle_request("GET", "/api/foods/empty")
+
+    def create_food(self, name: str, label_id: Optional[str] = None) -> Dict[str, Any]:
+        """Add a new food to the ingredient food library.
+
+        Args:
+            name: Name of the food
+            label_id: Optional UUID of the shopping list label to associate
+
+        Returns:
+            JSON response containing the created food
+        """
+        if not name:
+            raise ValueError("Food name cannot be empty")
+
+        payload: Dict[str, Any] = {"name": name}
+        if label_id:
+            payload["labelId"] = label_id
+
+        logger.info({"message": "Creating food", "name": name})
+        return self._handle_request("POST", "/api/foods", json=payload)
+
+    def merge_foods(self, from_food_id: str, to_food_id: str) -> Dict[str, Any]:
+        """Merge a duplicate food entry into a canonical one.
+
+        All recipe references to from_food_id are updated to to_food_id,
+        then the source entry is deleted.
+
+        Args:
+            from_food_id: UUID of the food to merge away (will be deleted)
+            to_food_id: UUID of the food to keep as canonical
+
+        Returns:
+            JSON response confirming the merge
+        """
+        if not from_food_id:
+            raise ValueError("Source food ID cannot be empty")
+        if not to_food_id:
+            raise ValueError("Target food ID cannot be empty")
+
+        payload = {"fromFood": from_food_id, "toFood": to_food_id}
+
+        logger.info({"message": "Merging foods", "from": from_food_id, "to": to_food_id})
+        return self._handle_request("PUT", "/api/foods/merge", json=payload)

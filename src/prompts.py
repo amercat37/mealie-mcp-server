@@ -340,6 +340,109 @@ Review period: {period}
         ]
 
     @mcp.prompt()
+    def recipe_builder(
+        name: str = "",
+        source: str = "",
+        cookbook: str = "my-recipes",
+    ) -> list[Message]:
+        """Guides the creation of a new recipe in Mealie using your existing
+        category, tag, tool, and food conventions.
+
+        Args:
+            name: Recipe name if already known (leave empty to discuss first)
+            source: Where the recipe comes from (website, cookbook, memory, etc.)
+            cookbook: Which cookbook to assign — "my-recipes" (default) or "the-autoimmune-solution"
+        """
+        source_note = f"Source: {source}" if source else "Source: not specified."
+        name_note = f'Recipe name: "{name}"' if name else "Recipe name: to be determined."
+
+        system_content = f"""
+<context>
+You have access to a Mealie MCP server. Use the following tools to build and save a recipe:
+- get_recipes: fetch existing recipes to observe naming and tagging patterns
+- get_recipe_detailed: fetch 2-3 similar recipes to use as a template for categories/tags/tools
+- get_categories: fetch all available category slugs
+- get_tags: fetch all available tag slugs
+- get_cooking_tools: fetch all available tool slugs
+- get_foods: search the food library before adding any ingredient
+- create_food: add a new food only if it does not exist in the library
+- create_recipe: create the recipe once all fields are confirmed
+</context>
+
+<instructions>
+## Setup
+{name_note}
+{source_note}
+Cookbook tag to assign: {cookbook}
+
+## Step 1 — Learn the conventions
+Before asking the user for any details, fetch 2-3 existing recipes that are similar in type
+(e.g., if this is a chicken dinner, fetch other chicken dinner recipes). Use get_recipe_detailed.
+Observe which categories, tags, and tools appear on those recipes — follow those patterns exactly.
+Do not invent new category/tag/tool combinations that aren't already in use.
+
+## Step 2 — Gather recipe details
+Ask the user for all required details conversationally. Collect:
+- Name (if not provided)
+- Description (1-2 sentences)
+- Categories (match existing patterns)
+- Tags (match existing patterns; always include "{cookbook}")
+- Required cooking tools (match existing patterns)
+- Ingredients — for each: quantity, unit, food name, and any note
+- Instructions — numbered steps; use section headers if needed
+- Prep time, cook time, total time (use ISO 8601: "PT30M", "PT1H")
+- Servings and yield (e.g., "4 servings")
+- Source URL if applicable
+- Nutrition (optional — only if user has this data)
+- Notes (optional tips, variations, storage instructions)
+
+## Step 3 — Resolve ingredients
+For each ingredient, search get_foods by name before using it.
+- If an exact or very close match exists, use that food name exactly as it appears in the library.
+- If no match exists, note the food as new — it will be created automatically by create_recipe.
+- Do not silently invent food names that differ from what's in the library.
+
+## Step 4 — Present preview
+Display the complete recipe in recipe-card format for user confirmation:
+
+**[Recipe Name]**
+*[Description]*
+
+Categories: | Tags: | Tools:
+Servings: | Prep: | Cook: | Total:
+
+**Ingredients:**
+[grouped by section if applicable]
+
+**Instructions:**
+[numbered steps]
+
+**Notes:** (if any)
+
+Ask: "Does this look correct? Any changes before I save it?"
+
+## Step 5 — Save
+On confirmation:
+1. Call create_recipe with the fully structured RecipeCreate payload.
+2. Confirm success and show the recipe slug for reference.
+3. Do not show an additional summary after saving — the preview was the summary.
+</instructions>
+"""
+
+        user_content = (
+            f'I want to add "{name}" to my recipe library.'
+            if name
+            else "I want to add a new recipe to my library."
+        )
+        if source:
+            user_content += f" It's from {source}."
+
+        return [
+            AssistantMessage(system_content),
+            UserMessage(user_content),
+        ]
+
+    @mcp.prompt()
     def nutrition_summary(period: str = "today") -> list[Message]:
         """Calculates caloric and macro intake from your meal plan.
 
