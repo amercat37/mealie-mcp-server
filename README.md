@@ -61,7 +61,7 @@ Six built-in conversation starters that pre-configure the assistant for specific
 ### Step 1 — Clone the repository
 
 ```bash
-git clone git@github.com:amercat37/mealie-mcp-server.git
+git clone https://github.com/amercat37/mealie-mcp-server.git
 cd mealie-mcp-server
 ```
 
