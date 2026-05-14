@@ -4,6 +4,22 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.1] — 2026-05-14
+
+### Fixed
+
+- `src/mealie/cookbooks.py`, `src/mealie/organizers.py` — corrected `page: int = None` to `page: Optional[int] = None` on all pagination params
+- `src/tools/recipe_tools.py` — `food_lookup` now guards against foods with missing `name` field (prevents KeyError)
+- `src/models/recipe.py` — extracted `RecipeNutritionCreate` model (subset of fields for recipe creation) and moved it above `RecipeCreate` to eliminate the forward reference string quote
+- `API_COVERAGE.md` — corrected Recipe Operations header from "6/14" to "7/14"; removed duplicate `DELETE /api/recipes/{slug}` from the Not Implemented list
+
+### Changed
+
+- `src/prompts.py` (`recipe_builder`) — Step 3 now instructs the assistant to call `get_labels` and assign a `label_id` (shopping list aisle) when creating a new food entry
+- `USAGE_EXAMPLES.md` — added sections for all tools and prompts introduced in v1.3.0 and v1.4.0: `recipe_builder` prompt, `create_recipe`, `duplicate_recipe`, `delete_test_recipe`, `get_empty_categories`, `get_empty_tags`, `get_empty_foods`, `create_food`, `merge_foods`, `delete_test_food`
+
+---
+
 ## [1.4.0] — 2026-05-14
 
 ### Added

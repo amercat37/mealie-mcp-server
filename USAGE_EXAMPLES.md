@@ -130,6 +130,35 @@ period="Monday"
 
 ---
 
+### recipe_builder
+
+**What it does:** Guides the creation of a new recipe in Mealie using your existing conventions. Fetches 2-3 similar recipes first to observe how you use categories, tags, and tools — then follows those patterns exactly. Matches ingredients to your existing food library before creating new ones. New foods get a shopping list label (aisle) assigned. Defaults to the "My Recipes" cookbook.
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `name` | _(empty)_ | Recipe name if already known |
+| `source` | _(empty)_ | Where the recipe comes from (website, cookbook, memory) |
+| `cookbook` | `"my-recipes"` | Cookbook tag to assign — `"my-recipes"` or `"the-autoimmune-solution"` |
+
+**Examples:**
+```
+name="Beef Stew", source="from memory"
+name="Banana Bread", source="King Arthur Flour website", cookbook="my-recipes"
+cookbook="the-autoimmune-solution"
+```
+
+**What happens behind the scenes:**
+1. Fetches 2-3 similar recipes to learn your category/tag/tool patterns
+2. Gathers all recipe fields conversationally
+3. Fuzzy-matches each ingredient to the food library — reuses existing foods by exact name
+4. For new foods, fetches labels and assigns the right shopping list aisle
+5. Presents a full recipe-card preview for confirmation
+6. On confirmation: creates any missing foods, then POSTs + PATCHes the full recipe
+
+---
+
 ## Recipe Tools
 
 ### get_recipes — GET /api/recipes
@@ -271,6 +300,38 @@ Returns available export formats and download links for a recipe, including a PD
 "Show me export options for chicken parmesan"
 "Get a downloadable link for the beef stew recipe"
 ```
+
+---
+
+### create_recipe — POST /api/recipes + PATCH /api/recipes/{slug}
+
+Creates a fully structured recipe in one call. Resolves category/tag/tool slugs to full objects and matches food names to the library automatically. Use the `recipe_builder` prompt for guided creation.
+
+```
+"Add a new recipe: Beef Stew — serves 6, 3 hours, categories: Dinner, Soup"
+"Create a recipe called Green Smoothie with spinach, banana, almond milk, and honey"
+"Add the autoimmune solution chicken recipe"
+```
+
+> **Tip:** Always let the assistant fetch existing similar recipes first so it can match your category/tag conventions. New foods are created automatically if they don't exist in the library.
+
+---
+
+### duplicate_recipe — POST /api/recipes/{slug}/duplicate
+
+Clones an existing recipe under a new name. Use this before making significant variations so the original stays untouched.
+
+```
+"Duplicate the beef stew recipe as a vegetarian version"
+"Clone chicken tikka masala and call it a slow cooker version"
+"Make a copy of the banana bread recipe so I can scale it up"
+```
+
+---
+
+### delete_test_recipe — DELETE /api/recipes/{slug} *(test suite only)*
+
+Restricted delete for the automated test suite. Only accepts slugs starting with `test-`. Rejects all other slugs immediately. Not intended for use outside of `tests/test_fetcher.py` and `tests/test_mcp_server.py`.
 
 ---
 
@@ -536,9 +597,31 @@ Returns a category and its associated recipes by slug.
 
 ---
 
+### get_empty_categories — GET /api/organizers/categories/empty
+
+Returns categories that have no recipes assigned. Use this to find and clean up stale category entries after reorganizing your library.
+
+```
+"Show me any categories with no recipes"
+"Which categories are empty?"
+"Find unused categories I can clean up"
+```
+
+---
+
 ## Tag Tools
 
-Tags are read-only — you can browse and filter by them but not create or modify them through this server.
+### get_empty_tags — GET /api/organizers/tags/empty
+
+Returns tags that have no recipes assigned. Use this to clean up orphaned tags after reorganizing.
+
+```
+"Show me any tags with no recipes"
+"Which tags are unused?"
+"Find empty tags I can clean up"
+```
+
+---
 
 ### get_tags — GET /api/organizers/tags
 
@@ -577,8 +660,6 @@ Returns a tag and its associated recipes by slug.
 
 ## Food Tools
 
-Foods are read-only — you can browse the ingredient food database but not modify it through this server.
-
 ### get_foods — GET /api/foods
 
 Returns all ingredient foods with optional search and pagination.
@@ -599,6 +680,50 @@ Returns a specific food item by ID, including label and alias information.
 "Get details for that food item"
 "Show me the food entry for chicken breast"
 ```
+
+---
+
+### get_empty_foods — GET /api/foods/empty
+
+Returns food entries not referenced by any recipe ingredient. Use this to find and clean up stale or duplicate food entries after merging.
+
+```
+"Show me foods that aren't used in any recipe"
+"Find unused food entries"
+"What foods can I clean up?"
+```
+
+---
+
+### create_food — POST /api/foods
+
+Adds a new food to the ingredient library. Always search with `get_foods` first — only create if no match exists. Assign a shopping list label so the food appears in the right aisle.
+
+```
+"Add 'coconut aminos' to the food library under Condiments"
+"Create a food entry for 'cassava flour' in the Baking section"
+"Add 'fresh turmeric' to the food library"
+```
+
+> **Tip:** The `recipe_builder` prompt handles food creation automatically during recipe building. Use `create_food` directly only when adding a standalone food entry.
+
+---
+
+### merge_foods — PUT /api/foods/merge
+
+Merges a duplicate food into a canonical entry. All recipe references to the source food are updated to the target, then the source is deleted. Use `get_foods` to find both UUIDs first.
+
+```
+"Merge 'chicken breasts' into 'chicken breast'"
+"Consolidate 'roma tomatoes' and 'roma tomato' into one entry"
+"Merge the duplicate garlic entries"
+```
+
+---
+
+### delete_test_food — DELETE /api/foods/{id} *(test suite only)*
+
+Restricted delete for the automated test suite. Looks up the food by ID, verifies the name starts with `__test_`, then deletes it. Rejects all other food entries immediately. Not intended for use outside of `tests/test_fetcher.py` and `tests/test_mcp_server.py`.
 
 ---
 
