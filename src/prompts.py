@@ -195,7 +195,6 @@ Use these labels in order when grouping:
 
 ## Grocery Cost Estimation
 - Exclude pantry staples from cost estimate
-- Use Aldi and Price Rite pricing assumptions
 - Prefer simple, affordable, and organic foods when realistic
 
 ## Notes
