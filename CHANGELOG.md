@@ -4,6 +4,26 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.0] — 2026-05-14
+
+### Added
+
+- **2 restricted delete tools** for use exclusively by the test suite:
+  - `delete_test_recipe(slug)` — deletes only slugs starting with `test-`
+  - `delete_test_food(food_id)` — looks up food name first; deletes only names starting with `__test_`
+- **Automated test suite** under `tests/`:
+  - `test_fetcher.py` — tests every `MealieFetcher` mixin method directly against the Mealie API; no MCP server required
+  - `test_mcp_server.py` — connects to the running MCP server via the MCP protocol and tests every tool end-to-end
+  - `tests/README.md` — setup and usage instructions
+- **`.env.testing.template`** — configuration template for test environment (external Mealie URL, temporary API key, debug logging, MCP server URL)
+- **`delete_food`** mixin method added to `FoodsMixin` (backing `delete_test_food`)
+
+### Changed
+
+- API coverage: 52 → 54 tools (restricted deletes counted separately from production tools)
+
+---
+
 ## [1.3.0] — 2026-05-14
 
 ### Added

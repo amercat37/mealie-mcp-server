@@ -99,6 +99,38 @@ def register_foods_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
+    def delete_test_food(food_id: str) -> Dict[str, Any]:
+        """Delete a test food entry. RESTRICTED — only works on foods whose name
+        starts with '__test_'.
+
+        Used exclusively by the automated test suite to clean up food entries
+        created during testing. Any food whose name does not start with '__test_'
+        will be rejected immediately.
+
+        Args:
+            food_id: UUID of the test food to delete
+
+        Returns:
+            Dict[str, Any]: Confirmation of deletion
+        """
+        try:
+            food = mealie.get_food(food_id)
+            name = food.get("name", "")
+            if not name.startswith("__test_"):
+                raise ToolError(
+                    f"delete_test_food is restricted to foods named '__test_*'. Got: '{name}'"
+                )
+            logger.info({"message": "Deleting test food", "food_id": food_id, "name": name})
+            return mealie.delete_food(food_id)
+        except ToolError:
+            raise
+        except Exception as e:
+            error_msg = f"Error deleting test food '{food_id}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
     def merge_foods(from_food_id: str, to_food_id: str) -> Dict[str, Any]:
         """Merge a duplicate food entry into a canonical one.
 

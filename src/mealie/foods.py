@@ -117,3 +117,18 @@ class FoodsMixin:
 
         logger.info({"message": "Merging foods", "from": from_food_id, "to": to_food_id})
         return self._handle_request("PUT", "/api/foods/merge", json=payload)
+
+    def delete_food(self, food_id: str) -> Dict[str, Any]:
+        """Delete a food entry from the ingredient library.
+
+        Args:
+            food_id: UUID of the food to delete
+
+        Returns:
+            JSON response confirming deletion
+        """
+        if not food_id:
+            raise ValueError("Food ID cannot be empty")
+
+        logger.info({"message": "Deleting food", "food_id": food_id})
+        return self._handle_request("DELETE", f"/api/foods/{food_id}")
