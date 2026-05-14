@@ -6,14 +6,14 @@ via the MCP protocol. Verifies tool registration, schema validation, and the
 full FastMCP request/response cycle.
 
 Requires the MCP server to be running in Docker before executing:
-    docker compose up -d
+    docker compose -f tests/docker-compose.yml up -d --build
     python tests/test_mcp_server.py
 
 Usage:
     cd mealie-mcp-server
     cp tests/.env.testing.template tests/.env.testing
     # edit tests/.env.testing with your values
-    docker compose up -d
+    docker compose -f tests/docker-compose.yml up -d --build
     python tests/test_mcp_server.py
 """
 
@@ -417,7 +417,7 @@ async def run(session: ClientSession) -> None:
 
         for tool, args in [
             ("get_shopping_list", {"list_id": lid}),
-            ("update_shopping_list", {"list_id": lid, "list_data": {"name": "__test_shopping_list_renamed__"}}),
+            ("update_shopping_list", {"list_id": lid, "name": "__test_shopping_list_renamed__"}),
             ("update_shopping_list_label_settings", {"list_id": lid, "label_settings": []}),
             ("get_shopping_list_items", {}),
         ]:
@@ -445,7 +445,7 @@ async def run(session: ClientSession) -> None:
 
             for tool, args in [
                 ("get_shopping_list_item", {"item_id": iid}),
-                ("update_shopping_list_item", {"item_id": iid, "item_data": {"checked": True}}),
+                ("update_shopping_list_item", {"item_id": iid, "checked": True}),
                 ("create_shopping_list_items_bulk", {
                     "items": [{"shoppingListId": lid, "note": "__test_bulk__", "checked": False}]
                 }),
@@ -559,13 +559,13 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     try:
         r = await session.call_tool("delete_test_recipe", {"slug": "real-recipe-slug"})
-        check("delete_test_recipe guard (should reject)", False, "guard did not fire")
+        check("delete_test_recipe guard (should reject)", getattr(r, "isError", False), "guard did not fire")
     except Exception as e:
         check("delete_test_recipe guard (should reject)", "restricted" in str(e).lower() or "test-" in str(e).lower())
 
     try:
         r = await session.call_tool("delete_test_food", {"food_id": "00000000-0000-0000-0000-000000000000"})
-        check("delete_test_food guard (should reject non-test food)", False, "guard did not fire")
+        check("delete_test_food guard (should reject non-test food)", getattr(r, "isError", False), "guard did not fire")
     except Exception as e:
         check("delete_test_food guard (should reject non-test food)", True, "rejected as expected")
 
@@ -618,7 +618,7 @@ async def main() -> None:
                 sys.exit(0 if failed == 0 else 1)
     except Exception as e:
         print(f"ERROR: Could not connect to MCP server — {e}")
-        print("Is the server running? Try: docker compose up -d")
+        print("Is the server running? Try: docker compose -f tests/docker-compose.yml up -d --build")
         sys.exit(1)
 
 

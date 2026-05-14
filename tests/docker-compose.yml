@@ -1,0 +1,11 @@
+services:
+  mealie_mcp_server_test:
+    image: mealie_mcp_server:test
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: mealie_mcp_server_test
+    env_file:
+      - .env.testing
+    ports:
+      - '8000:8000'

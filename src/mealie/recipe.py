@@ -309,12 +309,12 @@ class RecipeMixin:
         if not slug:
             raise ValueError("Recipe slug cannot be empty")
 
+        logger.info({"message": "Retrieving recipe share tokens", "slug": slug})
         recipe = self.get_recipe(slug)
         recipe_id = recipe["id"]
         all_tokens = self._handle_request("GET", "/api/shared/recipes")
         if isinstance(all_tokens, list):
             return [t for t in all_tokens if t.get("recipeId") == recipe_id]
-        logger.info({"message": "Retrieving recipe share tokens", "slug": slug})
         return all_tokens
 
     def create_recipe_share_token(self, slug: str) -> Dict[str, Any]:

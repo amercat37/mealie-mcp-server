@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
-from models.recipe import Recipe, RecipeCreate, RecipeIngredient, RecipeInstruction, RecipeNutritionCreate
+from models.recipe import Recipe, RecipeCreate
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -76,7 +76,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
     @mcp.tool()
     def get_recipe_detailed(slug: str) -> Dict[str, Any]:
-        """Retrieve a specific recipe by its slug identifier. Use this when to get full recipe
+        """Retrieve a specific recipe by its slug identifier. Use this to get full recipe
         details for tasks like updating or displaying the recipe.
 
         Args:

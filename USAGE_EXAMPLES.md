@@ -683,18 +683,6 @@ Returns a specific food item by ID, including label and alias information.
 
 ---
 
-### get_empty_foods — GET /api/foods/empty
-
-Returns food entries not referenced by any recipe ingredient. Use this to find and clean up stale or duplicate food entries after merging.
-
-```
-"Show me foods that aren't used in any recipe"
-"Find unused food entries"
-"What foods can I clean up?"
-```
-
----
-
 ### create_food — POST /api/foods
 
 Adds a new food to the ingredient library. Always search with `get_foods` first — only create if no match exists. Assign a shopping list label so the food appears in the right aisle.

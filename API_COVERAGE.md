@@ -6,7 +6,7 @@ This document compares the MCP server implementation against the official Mealie
 
 | Category | Total Endpoints | Implemented Tools | Coverage |
 |----------|----------------|-------------|----------|
-| Recipe Operations | 14 | 8 | 57% |
+| Recipe Operations | 14 | 7 | 50% |
 | Recipe Advanced Features | 8 | 6 | 75% |
 | Shopping Lists | 17 | 17 | 100% |
 | Categories | 6 | 4 | 67% |
@@ -108,7 +108,7 @@ This document compares the MCP server implementation against the official Mealie
 - 🚫 `GET /api/foods/empty` - Not exposed by Mealie's API (endpoint does not exist)
 - 🚫 `PUT /api/foods/{id}` - Update a food entry's name or attributes
 
-### ✅ Meal Plans (5/6 implemented)
+### ✅ Meal Plans (6/7 implemented)
 
 **Implemented:**
 - ✅ `GET /api/households/mealplans` - List all meal plan entries across a date range
@@ -121,7 +121,7 @@ This document compares the MCP server implementation against the official Mealie
 **Not Implemented:**
 - 🚫 `GET /api/households/mealplans/{id}` - Fetch a single meal plan entry by ID
 
-### ✅ Recipe Advanced Features (6/8 implemented — included in Recipe Operations above)
+### ✅ Recipe Advanced Features (6/8 implemented)
 
 **Implemented:**
 - ✅ `GET /api/recipes/{slug}/comments` - List all comments on a recipe

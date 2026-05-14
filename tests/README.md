@@ -33,7 +33,7 @@ python tests/test_fetcher.py
 Tests every tool via the MCP protocol against a running server instance.
 
 ```bash
-docker compose up -d
+docker compose -f tests/docker-compose.yml up -d --build
 python tests/test_mcp_server.py
 ```
 
@@ -44,7 +44,7 @@ python tests/test_mcp_server.py
 - Full create → read → update → delete cycle via MCP tool calls
 
 **Requirements:**
-- MCP server running in Docker (`docker compose up -d`)
+- MCP server running in Docker (`docker compose -f tests/docker-compose.yml up -d --build`)
 - `MCP_SERVER_URL` set in `tests/.env.testing` (default: `http://localhost:8000/mcp`)
 - Server's own `.env` must have valid `MEALIE_BASE_URL` and `MEALIE_API_KEY`
 

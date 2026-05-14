@@ -30,7 +30,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 ### 🏷️ Organization
 - **Categories**: Browse recipe categories (Breakfast, Dinner, etc.); find unused categories
 - **Tags**: Browse and filter by recipe tags; find unused tags
-- **Foods**: Search the ingredient food library; add new foods; merge duplicates; find unused entries
+- **Foods**: Search the ingredient food library; add new foods; merge duplicates
 - **Tools**: List cooking equipment tagged on recipes
 - **Units**: List units of measurement used in ingredients
 - **Labels**: List shopping list labels (grocery store sections)
@@ -168,6 +168,12 @@ mealie-mcp-server/
 │   └── ISSUE_TEMPLATE/
 │       ├── bug_report.md
 │       └── feature_request.md
+├── tests/
+│   ├── test_fetcher.py
+│   ├── test_mcp_server.py
+│   ├── docker-compose.yml
+│   ├── .env.testing.template
+│   └── README.md
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.template

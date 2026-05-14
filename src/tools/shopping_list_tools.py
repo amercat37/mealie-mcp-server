@@ -129,13 +129,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     ) -> Dict[str, Any]:
         """Add multiple recipes' ingredients to a shopping list in one request.
 
-        Each entry must include an id (recipe UUID). Optionally include
+        Each entry must include a recipeId (recipe UUID). Optionally include
         recipeIncrementQuantity to scale ingredients.
-        Example: [{"id": "recipe-uuid", "recipeIncrementQuantity": 1.0}]
+        Example: [{"recipeId": "recipe-uuid", "recipeIncrementQuantity": 1.0}]
 
         Args:
             list_id: The UUID of the shopping list
-            recipes: List of recipe objects with id and optional quantity multiplier
+            recipes: List of recipe objects with recipeId and optional quantity multiplier
 
         Returns:
             Dict[str, Any]: The updated shopping list
@@ -328,7 +328,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Args:
             items: List of item dictionaries, each containing:
-                - shopping_list_id (str): UUID of the shopping list
+                - shoppingListId (str): UUID of the shopping list
                 - note (str): Item description
                 - quantity (float, optional): Item quantity
                 - unit_id (str, optional): UUID of the unit

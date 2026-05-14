@@ -16,7 +16,7 @@ All notable changes to this project will be documented here.
 ### Changed
 
 - `src/prompts.py` (`recipe_builder`) — Step 3 now instructs the assistant to call `get_labels` and assign a `label_id` (shopping list aisle) when creating a new food entry
-- `USAGE_EXAMPLES.md` — added sections for all tools and prompts introduced in v1.3.0 and v1.4.0: `recipe_builder` prompt, `create_recipe`, `duplicate_recipe`, `delete_test_recipe`, `get_empty_categories`, `get_empty_tags`, `get_empty_foods`, `create_food`, `merge_foods`, `delete_test_food`
+- `USAGE_EXAMPLES.md` — added sections for all tools and prompts introduced in v1.3.0 and v1.4.0: `recipe_builder` prompt, `create_recipe`, `duplicate_recipe`, `delete_test_recipe`, `get_empty_categories`, `get_empty_tags`, `create_food`, `merge_foods`, `delete_test_food`
 
 ---
 
@@ -36,7 +36,7 @@ All notable changes to this project will be documented here.
 
 ### Changed
 
-- API coverage: 52 → 54 tools (restricted deletes counted separately from production tools)
+- API coverage: 51 → 53 tools (restricted deletes counted separately from production tools)
 
 ---
 
@@ -44,9 +44,9 @@ All notable changes to this project will be documented here.
 
 ### Added
 
-- **7 new MCP tools** for recipe creation and food library management:
+- **6 new MCP tools** for recipe creation and food library management:
   - Recipes: `create_recipe`, `duplicate_recipe`
-  - Foods: `create_food`, `merge_foods`, `get_empty_foods`
+  - Foods: `create_food`, `merge_foods`
   - Categories: `get_empty_categories` (restored)
   - Tags: `get_empty_tags` (restored)
 - **1 new server prompt**: `recipe_builder` — guided recipe creation that follows existing category/tag/tool conventions, matches ingredients to the food library, defaults to the "My Recipes" cookbook (`my-recipes` tag)
@@ -56,7 +56,7 @@ All notable changes to this project will be documented here.
 
 - `create_recipe` tool performs POST (create skeleton) + PATCH (fill all fields) automatically — the caller provides a single `RecipeCreate` payload and gets a fully populated recipe back
 - Food slug/name resolution happens inside `create_recipe` — categories, tags, tools resolved to full objects; food names fuzzy-matched against the library before any new food is created
-- API coverage improves from 45 tools (53%) to 52 tools (~61%)
+- API coverage improves from 45 tools (53%) to 51 tools (~59%)
 
 ---
 
