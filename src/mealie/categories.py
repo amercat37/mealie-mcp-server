@@ -51,15 +51,6 @@ class CategoriesMixin:
         logger.info({"message": "Retrieving categories", "parameters": params})
         return self._handle_request("GET", "/api/organizers/categories", params=params)
 
-    def get_empty_categories(self) -> List[Dict[str, Any]]:
-        """Get all categories that have no recipes assigned.
-
-        Returns:
-            List of empty categories
-        """
-        logger.info({"message": "Retrieving empty categories"})
-        return self._handle_request("GET", "/api/organizers/categories/empty")
-
     def create_category(self, name: str) -> Dict[str, Any]:
         """Create a new recipe category.
 

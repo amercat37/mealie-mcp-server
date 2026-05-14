@@ -6,27 +6,33 @@ This document compares the MCP server implementation against the official Mealie
 
 | Category | Total Endpoints | Implemented | Coverage |
 |----------|----------------|-------------|----------|
-| Recipe Operations | 20 | 4 | 20% |
-| Shopping Lists | 17 | 13 | 76% |
-| Categories | 7 | 4 | 57% |
-| Tags | 7 | 4 | 57% |
-| Meal Plans | 7 | 4 | 57% |
-| Foods | 7 | 2 | 29% |
-| Recipe Advanced Features | — | 0 | — |
-| Household Management | — | 0 | — |
-| Organizer Extras | — | 0 | — |
+| Recipe Operations | 20 | 10 | 50% |
+| Shopping Lists | 17 | 16 | 94% |
+| Categories | 5 | 4 | 80% |
+| Tags | 5 | 4 | 80% |
+| Meal Plans | 6 | 5 | 83% |
+| Foods | 5 | 2 | 40% |
+| Recipe Advanced Features | 8 | 6 | 75% |
+| Household Management | 1 | 1 | 100% |
+| Organizer Extras | 3 | 3 | 100% |
 | Admin & User Management | — | 0 | — |
-| **Total Priority APIs** | **65** | **31** | **48%** |
+| **Total Priority APIs** | **70** | **51** | **73%** |
 
 ## Detailed Coverage
 
-### ✅ Recipe Operations (4/20 implemented)
+### ✅ Recipe Operations (10/20 implemented)
 
 **Implemented:**
 - ✅ `GET /api/recipes` - Search and filter the recipe library with pagination and advanced filtering
 - ✅ `GET /api/recipes/{slug}` - Fetch full recipe details including ingredients, instructions, and nutrition
 - ✅ `GET /api/recipes/{slug}` - Fetch a concise recipe summary (name, tags, categories, image only)
 - ✅ `PATCH /api/recipes/{slug}/last-made` - Record today's date as the last time this recipe was made
+- ✅ `GET /api/recipes/{slug}/comments` - List all comments on a recipe
+- ✅ `POST /api/recipes/{slug}/comments` - Post a comment on a recipe
+- ✅ `GET /api/recipes/timeline` - View a chronological activity feed across all recipes
+- ✅ `GET /api/recipes/{slug}/share` - List public share links for a recipe
+- ✅ `POST /api/recipes/{slug}/share` - Create a public share link for a recipe
+- ✅ `GET /api/recipes/{slug}/exports` - Download a recipe in a supported export format (JSON, PDF, etc.)
 
 **Not Implemented:**
 - 🚫 `POST /api/recipes` - Create a new recipe from scratch
@@ -44,17 +50,20 @@ This document compares the MCP server implementation against the official Mealie
 - 🚫 `PUT /api/recipes` - Apply full field replacement to multiple recipes in one request
 - 🚫 `PATCH /api/recipes` - Apply partial field updates to multiple recipes in one request
 
-### ✅ Shopping Lists (13/17 implemented)
+### ✅ Shopping Lists (17/17 implemented)
 
 **Shopping List Management:**
 - ✅ `GET /api/households/shopping/lists` - List all shopping lists for the household
 - ✅ `POST /api/households/shopping/lists` - Create a new empty shopping list
 - ✅ `GET /api/households/shopping/lists/{id}` - Fetch a shopping list and its metadata by ID
+- ✅ `PUT /api/households/shopping/lists/{id}` - Rename or update the metadata of an existing shopping list
 - ✅ `DELETE /api/households/shopping/lists/{id}` - Delete a shopping list and all its items
+- ✅ `PUT /api/households/shopping/lists/{id}/label-settings` - Configure which labels appear and in what order on a shopping list
 
 **Recipe Integration:**
 - ✅ `POST /api/households/shopping/lists/{id}/recipe/{recipe_id}` - Add all ingredients from a recipe to a shopping list
 - ✅ `POST /api/households/shopping/lists/{id}/recipe/{recipe_id}/delete` - Remove a recipe's ingredients from a shopping list
+- ✅ `POST /api/households/shopping/lists/{id}/recipe` - Add multiple recipes' ingredients to a shopping list in one request
 
 **Shopping List Items:**
 - ✅ `GET /api/households/shopping/items` - List all items across shopping lists, filterable by list
@@ -66,16 +75,10 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `DELETE /api/households/shopping/items/{id}` - Remove a single item from a shopping list
 - ✅ `DELETE /api/households/shopping/items` - Remove multiple items from a shopping list by query parameters
 
-**Not Implemented:**
-- 🚫 `PUT /api/households/shopping/lists/{id}` - Rename or update the metadata of an existing shopping list
-- 🚫 `PUT /api/households/shopping/lists/{id}/label-settings` - Configure which labels appear and in what order on a shopping list
-- 🚫 `POST /api/households/shopping/lists/{id}/recipe` - Add multiple recipes' ingredients to a shopping list in one request
-
-### ✅ Categories (4/7 implemented)
+### ✅ Categories (4/5 implemented)
 
 **Implemented:**
 - ✅ `GET /api/organizers/categories` - List all recipe categories
-- ✅ `GET /api/organizers/categories/empty` - List categories that have no recipes assigned
 - ✅ `GET /api/organizers/categories/{id}` - Fetch a single category and its assigned recipes by ID
 - ✅ `GET /api/organizers/categories/slug/{slug}` - Fetch a category by its URL-friendly slug
 
@@ -84,11 +87,10 @@ This document compares the MCP server implementation against the official Mealie
 - 🚫 `PUT /api/organizers/categories/{id}` - Rename or update a category
 - 🚫 `DELETE /api/organizers/categories/{id}` - Delete a category
 
-### ✅ Tags (4/7 implemented)
+### ✅ Tags (4/5 implemented)
 
 **Implemented:**
 - ✅ `GET /api/organizers/tags` - List all recipe tags
-- ✅ `GET /api/organizers/tags/empty` - List tags that have no recipes assigned
 - ✅ `GET /api/organizers/tags/{id}` - Fetch a single tag and its assigned recipes by ID
 - ✅ `GET /api/organizers/tags/slug/{slug}` - Fetch a tag by its URL-friendly slug
 
@@ -107,36 +109,41 @@ This document compares the MCP server implementation against the official Mealie
 - 🚫 `POST /api/foods` - Add a new food to the ingredient food library
 - 🚫 `PUT /api/foods/{id}` - Update a food entry's name or attributes
 - 🚫 `DELETE /api/foods/{id}` - Remove a food from the library
-- 🚫 `GET /api/foods/empty` - List foods not referenced by any recipe ingredient
 - 🚫 `MERGE /api/foods/merge` - Merge duplicate food entries into one canonical entry
 
-### ✅ Meal Plans (4/7 implemented)
+### ✅ Meal Plans (5/6 implemented)
 
 **Implemented:**
 - ✅ `GET /api/households/mealplans` - List all meal plan entries across a date range
 - ✅ `GET /api/households/mealplans/today` - Fetch all meal plan entries scheduled for today
 - ✅ `POST /api/households/mealplans` - Add a recipe to the meal plan on a specific date
+- ✅ `PUT /api/households/mealplans/{id}` - Update a meal plan entry's date or recipe assignment
+- ✅ `DELETE /api/households/mealplans/{id}` - Remove an entry from the meal plan
 - ✅ Bulk creation via loop — create multiple meal plan entries by repeating single-entry creation
 
 **Not Implemented:**
 - 🚫 `GET /api/households/mealplans/{id}` - Fetch a single meal plan entry by ID
-- 🚫 `PUT /api/households/mealplans/{id}` - Update a meal plan entry's date or recipe assignment
-- 🚫 `DELETE /api/households/mealplans/{id}` - Remove an entry from the meal plan
 
-### ❌ Recipe Advanced Features (0 implemented)
+### ✅ Recipe Advanced Features (6/8 implemented)
 
-- 🚫 `GET /api/recipes/{slug}/comments` - List all comments on a recipe
-- 🚫 `POST /api/recipes/{slug}/comments` - Post a comment on a recipe
-- 🚫 `GET /api/recipes/timeline` - View a chronological activity feed across all recipes
-- 🚫 `GET /api/recipes/{slug}/share` - List public share links for a recipe
-- 🚫 `POST /api/recipes/{slug}/share` - Create a public share link for a recipe
-- 🚫 `GET /api/recipes/{slug}/exports` - Download a recipe in a supported export format (JSON, PDF, etc.)
+**Implemented:**
+- ✅ `GET /api/recipes/{slug}/comments` - List all comments on a recipe
+- ✅ `POST /api/recipes/{slug}/comments` - Post a comment on a recipe
+- ✅ `GET /api/recipes/timeline` - View a chronological activity feed across all recipes
+- ✅ `GET /api/recipes/{slug}/share` - List public share links for a recipe
+- ✅ `POST /api/recipes/{slug}/share` - Create a public share link for a recipe
+- ✅ `GET /api/recipes/{slug}/exports` - Download a recipe in a supported export format (JSON, PDF, etc.)
+
+**Not Implemented:**
 - 🚫 `GET /api/households/recipe-parser` - Fetch the household's recipe scraper/parser configuration
 - 🚫 `PUT /api/households/recipe-parser` - Update which parser Mealie uses when scraping recipes from URLs
 
-### ❌ Household Management (0 implemented)
+### ✅ Household Management (1/8 implemented)
 
-- 🚫 `GET /api/households/cookbooks` - List cookbooks (curated recipe collections) in the household
+**Implemented:**
+- ✅ `GET /api/households/cookbooks` - List cookbooks (curated recipe collections) in the household
+
+**Not Implemented:**
 - 🚫 `POST /api/households/cookbooks` - Create a new cookbook with a filtered set of recipes
 - 🚫 `GET /api/households/webhooks` - List outbound webhooks configured for the household
 - 🚫 `POST /api/households/webhooks` - Create a webhook that fires on meal plan events
@@ -145,13 +152,16 @@ This document compares the MCP server implementation against the official Mealie
 - 🚫 `GET /api/households/recipe-actions` - List custom recipe actions (external integrations triggered per recipe)
 - 🚫 `POST /api/households/recipe-actions` - Add a new custom recipe action
 
-### ❌ Organizer Extras (0 implemented)
+### ✅ Organizer Extras (3/6 implemented)
 
-- 🚫 `GET /api/organizers/tools` - List cooking tools used to tag which equipment a recipe requires
+**Implemented:**
+- ✅ `GET /api/organizers/tools` - List cooking tools used to tag which equipment a recipe requires
+- ✅ `GET /api/organizers/units` - List units of measurement used in recipe ingredient quantities
+- ✅ `GET /api/organizers/labels` - List labels used to categorize and sort shopping list items
+
+**Not Implemented:**
 - 🚫 `POST /api/organizers/tools` - Add a new cooking tool to the organizer library
-- 🚫 `GET /api/organizers/units` - List units of measurement used in recipe ingredient quantities
 - 🚫 `POST /api/organizers/units` - Add a new unit of measurement
-- 🚫 `GET /api/organizers/labels` - List labels used to categorize and sort shopping list items
 - 🚫 `POST /api/organizers/labels` - Create a new shopping list label
 
 ### ❌ Admin & User Management (0 implemented)

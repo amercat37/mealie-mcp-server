@@ -103,3 +103,52 @@ class MealplanMixin:
         """
         logger.info({"message": "Retrieving today's mealplan"})
         return self._handle_request("GET", "/api/households/mealplans/today")
+
+    def update_mealplan(
+        self,
+        entry_id: str,
+        date: str,
+        entry_type: str,
+        recipe_id: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update an existing mealplan entry.
+
+        Args:
+            entry_id: UUID of the mealplan entry to update
+            date: New date for the entry (YYYY-MM-DD)
+            entry_type: Type of entry (breakfast, lunch, dinner, side)
+            recipe_id: UUID of the recipe (optional)
+            title: Title for non-recipe entries (optional)
+
+        Returns:
+            JSON response containing the updated mealplan entry
+        """
+        if not entry_id:
+            raise ValueError("Entry ID cannot be empty")
+        if not date:
+            raise ValueError("Date cannot be empty")
+
+        payload = {"date": date, "entryType": entry_type}
+        if recipe_id:
+            payload["recipeId"] = recipe_id
+        if title:
+            payload["title"] = title
+
+        logger.info({"message": "Updating mealplan entry", "entry_id": entry_id})
+        return self._handle_request("PUT", f"/api/households/mealplans/{entry_id}", json=payload)
+
+    def delete_mealplan(self, entry_id: str) -> Dict[str, Any]:
+        """Delete a mealplan entry.
+
+        Args:
+            entry_id: UUID of the mealplan entry to delete
+
+        Returns:
+            JSON response confirming deletion
+        """
+        if not entry_id:
+            raise ValueError("Entry ID cannot be empty")
+
+        logger.info({"message": "Deleting mealplan entry", "entry_id": entry_id})
+        return self._handle_request("DELETE", f"/api/households/mealplans/{entry_id}")

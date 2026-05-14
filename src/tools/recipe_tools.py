@@ -137,6 +137,129 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
+    def get_recipe_comments(slug: str) -> List[Dict[str, Any]]:
+        """Get all comments on a recipe.
+
+        Args:
+            slug: The unique text identifier for the recipe
+
+        Returns:
+            List[Dict[str, Any]]: List of comments with text, author, and timestamps
+        """
+        try:
+            logger.info({"message": "Fetching recipe comments", "slug": slug})
+            return mealie.get_recipe_comments(slug)
+        except Exception as e:
+            error_msg = f"Error fetching comments for recipe '{slug}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def create_recipe_comment(slug: str, text: str) -> Dict[str, Any]:
+        """Post a comment on a recipe. Use this to record cooking notes such as
+        substitutions made, timing adjustments, or how the dish turned out.
+
+        Args:
+            slug: The unique text identifier for the recipe
+            text: The comment text
+
+        Returns:
+            Dict[str, Any]: The created comment
+        """
+        try:
+            logger.info({"message": "Creating recipe comment", "slug": slug})
+            return mealie.create_recipe_comment(slug, text)
+        except Exception as e:
+            error_msg = f"Error creating comment for recipe '{slug}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def get_recipe_timeline(
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Get a chronological activity feed across all recipes. Use this to answer
+        questions like 'what did I cook last Wednesday?' or 'what have I been making lately?'
+
+        Args:
+            page: Page number to retrieve
+            per_page: Number of items per page
+
+        Returns:
+            Dict[str, Any]: Timeline events with recipe names and timestamps
+        """
+        try:
+            logger.info({"message": "Fetching recipe timeline"})
+            return mealie.get_recipe_timeline(page=page, per_page=per_page)
+        except Exception as e:
+            error_msg = f"Error fetching recipe timeline: {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def get_recipe_share_tokens(slug: str) -> List[Dict[str, Any]]:
+        """List existing public share links for a recipe.
+
+        Args:
+            slug: The unique text identifier for the recipe
+
+        Returns:
+            List[Dict[str, Any]]: List of share tokens with URLs and expiry info
+        """
+        try:
+            logger.info({"message": "Fetching recipe share tokens", "slug": slug})
+            return mealie.get_recipe_share_tokens(slug)
+        except Exception as e:
+            error_msg = f"Error fetching share tokens for recipe '{slug}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def create_recipe_share_token(slug: str) -> Dict[str, Any]:
+        """Create a public share link for a recipe. Use this to share a recipe
+        with someone outside Mealie (e.g., text it to a family member).
+
+        Args:
+            slug: The unique text identifier for the recipe
+
+        Returns:
+            Dict[str, Any]: The new share token including the shareable URL
+        """
+        try:
+            logger.info({"message": "Creating recipe share token", "slug": slug})
+            return mealie.create_recipe_share_token(slug)
+        except Exception as e:
+            error_msg = f"Error creating share token for recipe '{slug}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def get_recipe_exports(slug: str) -> Dict[str, Any]:
+        """Get available export formats and download links for a recipe,
+        including a PDF download link.
+
+        Args:
+            slug: The unique text identifier for the recipe
+
+        Returns:
+            Dict[str, Any]: Available export formats and their download URLs
+        """
+        try:
+            logger.info({"message": "Fetching recipe exports", "slug": slug})
+            return mealie.get_recipe_exports(slug)
+        except Exception as e:
+            error_msg = f"Error fetching exports for recipe '{slug}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
     def mark_recipe_last_made(slug: str) -> Dict[str, Any]:
         """Mark a recipe as having been made today (updates last made timestamp).
 

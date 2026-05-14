@@ -368,6 +368,65 @@ class ShoppingListMixin:
         logger.info({"message": "Deleting shopping list item", "item_id": item_id})
         return self._handle_request("DELETE", f"/api/households/shopping/items/{item_id}")
 
+    def update_shopping_list_label_settings(
+        self,
+        list_id: str,
+        label_settings: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Update the label display order for a shopping list.
+
+        Args:
+            list_id: UUID of the shopping list
+            label_settings: Ordered list of label setting objects, e.g.
+                [{"labelId": "uuid", "position": 0}, ...]
+
+        Returns:
+            JSON response containing the updated label settings
+        """
+        if not list_id:
+            raise ValueError("Shopping list ID cannot be empty")
+        if not label_settings:
+            raise ValueError("Label settings cannot be empty")
+
+        logger.info({"message": "Updating shopping list label settings", "list_id": list_id})
+        return self._handle_request(
+            "PUT",
+            f"/api/households/shopping/lists/{list_id}/label-settings",
+            json=label_settings,
+        )
+
+    def add_recipes_to_shopping_list_bulk(
+        self,
+        list_id: str,
+        recipes: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Add multiple recipes' ingredients to a shopping list in one request.
+
+        Args:
+            list_id: UUID of the shopping list
+            recipes: List of recipe objects, each containing:
+                - id (str): UUID of the recipe
+                - recipeIncrementQuantity (float, optional): Quantity multiplier
+
+        Returns:
+            JSON response containing the updated shopping list
+        """
+        if not list_id:
+            raise ValueError("Shopping list ID cannot be empty")
+        if not recipes:
+            raise ValueError("Recipes list cannot be empty")
+
+        logger.info({
+            "message": "Adding multiple recipes to shopping list",
+            "list_id": list_id,
+            "count": len(recipes),
+        })
+        return self._handle_request(
+            "POST",
+            f"/api/households/shopping/lists/{list_id}/recipe",
+            json=recipes,
+        )
+
     def delete_shopping_list_items_bulk(
         self,
         item_ids: List[str],

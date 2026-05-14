@@ -134,6 +134,60 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
+    def update_mealplan(
+        entry_id: str,
+        date: str,
+        entry_type: str,
+        recipe_id: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update an existing meal plan entry's date, type, or recipe assignment.
+
+        Args:
+            entry_id: UUID of the meal plan entry to update
+            date: New date for the entry (YYYY-MM-DD)
+            entry_type: Type of entry (breakfast, lunch, dinner, side)
+            recipe_id: UUID of the recipe (optional)
+            title: Title for non-recipe entries (optional)
+
+        Returns:
+            Dict[str, Any]: The updated meal plan entry
+        """
+        try:
+            logger.info({"message": "Updating mealplan entry", "entry_id": entry_id})
+            return mealie.update_mealplan(
+                entry_id=entry_id,
+                date=date,
+                entry_type=entry_type,
+                recipe_id=recipe_id,
+                title=title,
+            )
+        except Exception as e:
+            error_msg = f"Error updating mealplan entry '{entry_id}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def delete_mealplan(entry_id: str) -> Dict[str, Any]:
+        """Delete a meal plan entry.
+
+        Args:
+            entry_id: UUID of the meal plan entry to delete
+
+        Returns:
+            Dict[str, Any]: Confirmation of deletion
+        """
+        try:
+            logger.info({"message": "Deleting mealplan entry", "entry_id": entry_id})
+            return mealie.delete_mealplan(entry_id=entry_id)
+        except Exception as e:
+            error_msg = f"Error deleting mealplan entry '{entry_id}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
     def get_todays_mealplan() -> List[Dict[str, Any]]:
         """Get the mealplan entries for today.
 
