@@ -365,6 +365,7 @@ You have access to a Mealie MCP server. Use the following tools to build and sav
 - get_tags: fetch all available tag slugs
 - get_cooking_tools: fetch all available tool slugs
 - get_foods: search the food library before adding any ingredient
+- get_labels: fetch available shopping list labels to assign to new foods
 - create_food: add a new food only if it does not exist in the library
 - create_recipe: create the recipe once all fields are confirmed
 </context>
@@ -399,7 +400,10 @@ Ask the user for all required details conversationally. Collect:
 ## Step 3 — Resolve ingredients
 For each ingredient, search get_foods by name before using it.
 - If an exact or very close match exists, use that food name exactly as it appears in the library.
-- If no match exists, note the food as new — it will be created automatically by create_recipe.
+- If no match exists, the food must be created before saving the recipe:
+  1. Call get_labels to find the appropriate shopping list label (e.g. "Vegetables & Greens", "Meats", "Dairy & Eggs")
+  2. Call create_food with the food name and the matching label_id so it appears in the right aisle
+  3. Use the returned food in the ingredient list
 - Do not silently invent food names that differ from what's in the library.
 
 ## Step 4 — Present preview

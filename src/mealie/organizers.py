@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from utils import format_api_params
 
@@ -11,8 +11,8 @@ class OrganizersMixin:
 
     def get_organizer_tools(
         self,
-        page: int = None,
-        per_page: int = None,
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get all cooking tools.
 
@@ -29,8 +29,8 @@ class OrganizersMixin:
 
     def get_organizer_units(
         self,
-        page: int = None,
-        per_page: int = None,
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get all units of measurement.
 
@@ -47,8 +47,8 @@ class OrganizersMixin:
 
     def get_organizer_labels(
         self,
-        page: int = None,
-        per_page: int = None,
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get all shopping list labels.
 

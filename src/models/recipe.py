@@ -7,6 +7,16 @@ class RecipeCommentCreate(BaseModel):
     text: str
 
 
+class RecipeNutritionCreate(BaseModel):
+    calories: Optional[str] = None
+    carbohydrateContent: Optional[str] = None
+    fatContent: Optional[str] = None
+    fiberContent: Optional[str] = None
+    proteinContent: Optional[str] = None
+    sodiumContent: Optional[str] = None
+    sugarContent: Optional[str] = None
+
+
 class RecipeIngredientCreate(BaseModel):
     quantity: Optional[float] = None
     unit: Optional[str] = None  # unit name — tool resolves to ID
@@ -35,7 +45,7 @@ class RecipeCreate(BaseModel):
     recipeYield: Optional[str] = None  # e.g. "4 servings"
     recipeServings: Optional[int] = None
     orgURL: Optional[str] = None  # source URL if recipe came from somewhere
-    nutrition: Optional["RecipeNutrition"] = None
+    nutrition: Optional[RecipeNutritionCreate] = None
     notes: Optional[List[Dict[str, str]]] = None  # [{"title": "...", "text": "..."}]
 
 

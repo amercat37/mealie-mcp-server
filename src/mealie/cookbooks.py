@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from utils import format_api_params
 
@@ -11,8 +11,8 @@ class CookbooksMixin:
 
     def get_cookbooks(
         self,
-        page: int = None,
-        per_page: int = None,
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get all cookbooks for the current household.
 

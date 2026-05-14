@@ -20,7 +20,7 @@ This document compares the MCP server implementation against the official Mealie
 
 ## Detailed Coverage
 
-### ✅ Recipe Operations (6/14 implemented)
+### ✅ Recipe Operations (7/14 implemented)
 
 **Implemented:**
 - ✅ `GET /api/recipes` - Search and filter the recipe library with pagination and advanced filtering
@@ -34,7 +34,6 @@ This document compares the MCP server implementation against the official Mealie
 **Not Implemented:**
 - 🚫 `PUT /api/recipes/{slug}` - Replace all fields of an existing recipe with a new version
 - 🚫 `PATCH /api/recipes/{slug}` - Update individual recipe fields without replacing the whole record
-- 🚫 `DELETE /api/recipes/{slug}` - Permanently delete a recipe
 - 🚫 `POST /api/recipes/{slug}/image` - Scrape and attach an image to a recipe from a URL
 - 🚫 `PUT /api/recipes/{slug}/image` - Upload an image file directly to a recipe
 - 🚫 `POST /api/recipes/{slug}/assets` - Attach a file asset (PDF, etc.) to a recipe

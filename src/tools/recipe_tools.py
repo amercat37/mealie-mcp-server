@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
-from models.recipe import Recipe, RecipeCreate, RecipeIngredient, RecipeInstruction
+from models.recipe import Recipe, RecipeCreate, RecipeIngredient, RecipeInstruction, RecipeNutritionCreate
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -304,7 +304,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
             # Step 3: Resolve ingredient food names and unit names → full objects
             all_foods = mealie.get_foods(per_page=500).get("items", [])
-            food_lookup = {f["name"].lower(): f for f in all_foods}
+            food_lookup = {f["name"].lower(): f for f in all_foods if f.get("name")}
 
             all_units = mealie.get_organizer_units(per_page=200).get("items", [])
             unit_lookup = {u["name"].lower(): u for u in all_units}
