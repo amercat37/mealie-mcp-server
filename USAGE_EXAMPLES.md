@@ -11,6 +11,8 @@ Practical examples for using the Mealie MCP Server with Claude and ChatGPT.
 - [Tag Tools](#tag-tools)
 - [Food Tools](#food-tools)
 - [Meal Plan Tools](#meal-plan-tools)
+- [Cookbook Tools](#cookbook-tools)
+- [Organizer Tools](#organizer-tools)
 - [Workflows](#workflows)
 
 ---
@@ -21,32 +23,110 @@ MCP prompts are pre-built conversation starters that inject system instructions 
 
 ### weekly_meal_plan
 
-**What it does:** Starts a guided meal planning session. The assistant is pre-instructed to search your Mealie recipe database, present a full 7-day plan (breakfast, lunch, dinner) in table format, ask for feedback, and save the confirmed plan to Mealie.
+**What it does:** Starts a guided meal planning session. The assistant pulls your full Mealie recipe library, builds a multi-day plan using your meal categories, applies tag filters and dietary notes, handles leftover reuse, enforces sandwich rules, and saves the confirmed plan to Mealie.
 
-**How to invoke in Claude:**
-1. Open a new conversation
-2. Click the **Attach** or **+** button and select **Mealie MCP Server**
-3. Choose **weekly_meal_plan** from the prompt list
-4. Optionally fill in the `preferences` field before submitting
+**Parameters:**
 
-**How to invoke in ChatGPT:**
-1. Open a new conversation with the Mealie connector active
-2. Type `/weekly_meal_plan` or select it from the prompt menu
+| Parameter | Default | Description |
+|---|---|---|
+| `days` | `7` | Number of days to plan |
+| `tags` | _(empty)_ | Comma-separated tag slugs to filter recipes (empty = all recipes) |
+| `meals` | `Breakfast,Lunch,Dinner,Side Dish,Snack,Dessert` | Meal categories per day |
+| `notes` | _(empty)_ | Strict dietary notes or constraints |
 
-**The `preferences` parameter (optional):**
-
-If left empty, the assistant plans a balanced general week. If provided, your preferences are appended to the opening user message and the assistant tailors the plan accordingly.
-
+**Examples:**
 ```
-preferences: "vegetarian, no nuts, prefer quick weeknight meals"
-preferences: "high protein, Mediterranean style"
-preferences: "family of 4, budget-friendly, kid-friendly meals"
+days=7, tags="", meals="Breakfast,Lunch,Dinner", notes=""
+days=5, tags="weeknight", meals="Dinner,Side Dish", notes="no pork"
+days=7, tags="gluten-free", notes="nut allergy, avoid tree nuts"
 ```
 
 **What happens behind the scenes:**
-1. The assistant receives system instructions covering which tools to use (`get_recipes`, `get_recipe_concise`, `create_mealplan_bulk`) and how to interact with you
-2. The conversation opens with: *"I need help creating a balanced meal plan for the next week..."* (plus your preferences if provided)
-3. The assistant searches your recipe database, proposes a plan, asks for swaps or adjustments, then saves the final plan to Mealie on your confirmation
+1. Assistant fetches all recipes from your Mealie database
+2. Applies tag filters if specified
+3. Builds a plan matching your meal categories to Mealie recipe categories
+4. Presents the plan in table format and asks for any swaps
+5. After confirmation, saves the plan to Mealie
+
+---
+
+### shopping_trip
+
+**What it does:** Builds a consolidated shopping list from your current meal plan, grouped by grocery store section labels, with a cost estimate using Aldi/Price Rite pricing.
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `store` | _(empty)_ | Store name to optimize label order for (e.g. "Kroger", "Aldi") |
+| `notes` | _(empty)_ | Additional exclusions or notes |
+
+**Examples:**
+```
+store="Aldi", notes=""
+store="Kroger", notes="skip pantry staples I already have"
+store="", notes="exclude spices, I have them all"
+```
+
+---
+
+### cooking_session
+
+**What it does:** Stages everything you need before starting to cook — full recipe details, required equipment, units, and any existing cooking notes/comments. Works from a specific recipe or today's meal plan.
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `recipe` | _(empty)_ | Recipe name or slug (empty = use today's meal plan) |
+
+**Examples:**
+```
+recipe="lasagna"
+recipe="chicken-parmesan"
+recipe=""  → assistant asks which of today's meals you're cooking
+```
+
+---
+
+### weekly_review
+
+**What it does:** Summarizes your cooking and eating history over a time period using the recipe timeline and meal plan history. Answers questions like "what did I eat last Wednesday?" or "what have I been making lately?"
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `period` | `"this week"` | Time period to review |
+
+**Examples:**
+```
+period="this week"
+period="last week"
+period="last 30 days"
+period="last Wednesday"
+```
+
+---
+
+### nutrition_summary
+
+**What it does:** Calculates caloric and macro intake (calories, carbs, fat, protein, fiber, sodium, sugar) from your meal plan's nutrition data. Flags any recipes missing nutrition info rather than silently returning zeros.
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `period` | `"today"` | Time period to calculate |
+
+**Examples:**
+```
+period="today"
+period="this week"
+period="Monday"
+```
+
+> **Note:** Output quality depends on whether your recipes have nutrition data filled in. Recipes added manually without nutrition info will be flagged.
 
 ---
 
@@ -54,19 +134,20 @@ preferences: "family of 4, budget-friendly, kid-friendly meals"
 
 ### get_recipes — GET /api/recipes
 
-Lists and searches recipes with optional filtering.
+Lists and searches recipes with optional filtering. Always use slugs when filtering by tag or category, not display names.
 
 ```
 "Show me all my recipes"
 "Search for chicken recipes"
 "Find recipes with 'pasta' in the name"
-"Show me 20 recipes per page"
+"Show me 50 recipes"
 ```
 
-**Filtering by category (use slugs, not display names):**
+**Filtering by category (use slugs):**
 ```
-"Get all breakfast recipes"
-"Find recipes in the dinner category"
+"Get all breakfast recipes"         → category slug: breakfast
+"Find recipes in the dinner category" → category slug: dinner
+"Show me side dish recipes"         → category slug: side-dish
 ```
 
 **Filtering by tag:**
@@ -86,7 +167,7 @@ Lists and searches recipes with optional filtering.
 
 ### get_recipe_detailed — GET /api/recipes/{slug}
 
-Returns the full recipe including all ingredients, step-by-step instructions, nutrition info, notes, and metadata.
+Returns the full recipe including all ingredients with quantities and units, step-by-step instructions, nutrition info, notes, assets, and metadata. Use this when you need everything — cooking, nutrition calculation, sharing.
 
 ```
 "Show me the full lasagna recipe"
@@ -98,13 +179,15 @@ Returns the full recipe including all ingredients, step-by-step instructions, nu
 
 ### get_recipe_concise — GET /api/recipes/{slug}
 
-Returns a summary of a recipe — name, servings, total time, rating, ingredients list, and last made date. Used by default when full details aren't needed (e.g. during meal planning).
+Returns a compact recipe summary — name, servings, total time, rating, ingredients list, and last made date. Use this during meal planning or quick lookups to avoid large responses.
 
 ```
 "Give me a quick summary of the lasagna recipe"
 "What are the ingredients and servings for chicken soup?"
 "How long does the pasta recipe take?"
 ```
+
+> **When to use which:** Use `get_recipe_concise` when planning meals or building lists. Use `get_recipe_detailed` when you're about to cook, sharing, or calculating nutrition.
 
 ---
 
@@ -116,6 +199,77 @@ Updates the last made timestamp on a recipe to today's date.
 "Mark the chicken parmesan as made today"
 "Update the last made date for lasagna"
 "I just made the beef stew — mark it as made"
+```
+
+---
+
+### get_recipe_comments — GET /api/recipes/{slug}/comments
+
+Returns all comments on a recipe. Comments are used as cooking notes — tips, substitutions, timing adjustments.
+
+```
+"Show me the cooking notes for lasagna"
+"What comments are on the chicken soup recipe?"
+"Have I left any notes on the beef stew?"
+```
+
+---
+
+### create_recipe_comment — POST /api/recipes/{slug}/comments
+
+Posts a comment on a recipe. Use this to record what worked, what didn't, or any adjustments you made.
+
+```
+"Add a note to lasagna: used half the salt, was perfect"
+"Comment on chicken parmesan: cooked 5 minutes longer, still juicy"
+"Note on beef stew: added an extra potato, family loved it"
+```
+
+---
+
+### get_recipe_timeline — GET /api/recipes/timeline
+
+Returns a chronological activity feed across all recipes. Use this to see what you've been cooking lately or to answer date-specific questions.
+
+```
+"What have I been cooking lately?"
+"Show me my recent recipe activity"
+"What recipes have I made this month?"
+```
+
+---
+
+### get_recipe_share_tokens — GET /api/recipes/{slug}/share
+
+Lists existing public share links for a recipe.
+
+```
+"Show me the share links for lasagna"
+"Do I have any existing share links for chicken parmesan?"
+```
+
+---
+
+### create_recipe_share_token — POST /api/recipes/{slug}/share
+
+Creates a new public share link for a recipe. Share it with anyone — they don't need a Mealie account.
+
+```
+"Create a share link for the lasagna recipe"
+"Generate a shareable link for chicken soup so I can text it to my mom"
+"Share the beef stew recipe"
+```
+
+---
+
+### get_recipe_exports — GET /api/recipes/{slug}/exports
+
+Returns available export formats and download links for a recipe, including a PDF link.
+
+```
+"Get the PDF link for the lasagna recipe"
+"Show me export options for chicken parmesan"
+"Get a downloadable link for the beef stew recipe"
 ```
 
 ---
@@ -141,7 +295,7 @@ Creates a new empty shopping list.
 ```
 "Create a shopping list called 'Weekly Groceries'"
 "Make a new list called 'Thanksgiving Shopping'"
-"Start a new shopping list for meal prep"
+"Start a new shopping list for this week"
 ```
 
 ---
@@ -158,6 +312,17 @@ Returns a specific shopping list and all its items by ID.
 
 ---
 
+### update_shopping_list — PUT /api/households/shopping/lists/{id}
+
+Renames an existing shopping list.
+
+```
+"Rename my shopping list to 'Kroger Run'"
+"Change the list name from 'Weekly' to 'Weekly Groceries'"
+```
+
+---
+
 ### delete_shopping_list — DELETE /api/households/shopping/lists/{id}
 
 Permanently deletes a shopping list and all its items.
@@ -170,15 +335,29 @@ Permanently deletes a shopping list and all its items.
 
 ---
 
+### update_shopping_list_label_settings — PUT /api/households/shopping/lists/{id}/label-settings
+
+Sets the label display order on a shopping list to match a specific store's aisle layout.
+
+```
+"Set up my Kroger list so produce comes before dairy"
+"Arrange my Aldi list labels in the order I walk the store"
+"Update the label order on my shopping list for Costco"
+```
+
+> **Tip:** Use `get_labels` first to see your available label IDs, then specify the order.
+
+---
+
 ### add_recipe_to_shopping_list — POST /api/households/shopping/lists/{id}/recipe/{recipe_id}
 
-Adds all ingredients from a recipe to an existing shopping list. Optionally scales quantities by a multiplier.
+Adds all ingredients from a single recipe to an existing shopping list. Optionally scales quantities by a multiplier.
 
 ```
 "Add the lasagna recipe ingredients to my shopping list"
 "Add chicken soup ingredients to Weekly Groceries"
 "Add the pasta recipe to my list with double quantities"
-"Add lasagna ingredients for 8 people (recipe serves 4)"
+"Add lasagna for 8 people (recipe serves 4)"
 ```
 
 ---
@@ -191,6 +370,18 @@ Removes the ingredients of a specific recipe from a shopping list.
 "Remove the lasagna ingredients from my shopping list"
 "Take the chicken soup items off my grocery list"
 "I'm not making pasta anymore — remove it from the list"
+```
+
+---
+
+### add_recipes_to_shopping_list_bulk — POST /api/households/shopping/lists/{id}/recipe
+
+Adds multiple recipes' ingredients to a shopping list in a single operation. More efficient than adding recipes one at a time.
+
+```
+"Add all this week's dinner recipes to my shopping list at once"
+"Add lasagna, chicken soup, and beef stew to my grocery list"
+"Build a shopping list from Monday through Friday's meals"
 ```
 
 ---
@@ -322,18 +513,6 @@ Returns all recipe categories with pagination.
 
 ---
 
-### get_empty_categories — GET /api/organizers/categories/empty
-
-Returns categories that have no recipes assigned to them.
-
-```
-"Which categories have no recipes?"
-"Show me empty categories"
-"Find unused categories"
-```
-
----
-
 ### get_category — GET /api/organizers/categories/{id}
 
 Returns a specific category and its associated recipes by ID.
@@ -351,8 +530,8 @@ Returns a category and its associated recipes by slug.
 
 ```
 "Show me recipes in the 'breakfast' category"
-"Get the 'quick-meals' category"
-"Find the 'desserts' category"
+"Get the 'side-dish' category"
+"Find the 'dessert' category"
 ```
 
 ---
@@ -369,18 +548,6 @@ Returns all recipe tags with pagination.
 "Show me all tags"
 "What tags do I have?"
 "List all my recipe tags"
-```
-
----
-
-### get_empty_tags — GET /api/organizers/tags/empty
-
-Returns tags that have no recipes assigned to them.
-
-```
-"Which tags have no recipes?"
-"Show me unused tags"
-"Find empty tags"
 ```
 
 ---
@@ -446,6 +613,7 @@ Returns all meal plan entries with optional date filtering and pagination.
 "What meals do I have planned?"
 "Show me meal plans from Monday to Friday"
 "Get meal plans for next week"
+"What did I have planned last Wednesday?"
 ```
 
 ---
@@ -465,7 +633,7 @@ Returns all meal plan entries for today.
 
 ### create_mealplan — POST /api/households/mealplans
 
-Creates a single meal plan entry for a specific date. Supports breakfast, lunch, dinner, and side entry types.
+Creates a single meal plan entry for a specific date.
 
 ```
 "Add lasagna to Thursday's dinner"
@@ -478,7 +646,7 @@ Creates a single meal plan entry for a specific date. Supports breakfast, lunch,
 
 ### create_mealplan_bulk — POST /api/households/mealplans (loop)
 
-Creates multiple meal plan entries at once by looping through a list of entries.
+Creates multiple meal plan entries at once.
 
 ```
 "Plan this week's dinners:
@@ -494,64 +662,166 @@ Creates multiple meal plan entries at once by looping through a list of entries.
 
 ---
 
+### update_mealplan — PUT /api/households/mealplans/{id}
+
+Updates an existing meal plan entry — change the date, meal type, or recipe assignment.
+
+```
+"Move Thursday's lasagna to Friday"
+"Change Wednesday's lunch to chicken soup"
+"Swap Saturday's breakfast to pancakes"
+"Move tonight's dinner to tomorrow"
+```
+
+---
+
+### delete_mealplan — DELETE /api/households/mealplans/{id}
+
+Removes an entry from the meal plan.
+
+```
+"Remove Thursday's lunch from the meal plan"
+"Delete Saturday's breakfast"
+"Clear Sunday's dinner — we're eating out"
+```
+
+---
+
+## Cookbook Tools
+
+### get_cookbooks — GET /api/households/cookbooks
+
+Returns all cookbooks (curated recipe collections) in the household.
+
+```
+"Show me all my cookbooks"
+"What cookbooks do I have?"
+"List my recipe collections"
+```
+
+---
+
+## Organizer Tools
+
+### get_cooking_tools — GET /api/organizers/tools
+
+Lists all cooking tools used to tag recipes by required equipment.
+
+```
+"What cooking tools do I have set up?"
+"Show me all equipment tags"
+"List tools like stand mixer, instant pot, grill"
+```
+
+> **Tip:** Use this to find tool slugs before filtering recipes by required equipment with `get_recipes`.
+
+---
+
+### get_units — GET /api/organizers/units
+
+Lists all units of measurement used in recipe ingredient quantities.
+
+```
+"Show me all units of measurement"
+"What units do I have — cups, grams, tablespoons?"
+"List all ingredient units"
+```
+
+---
+
+### get_labels — GET /api/organizers/labels
+
+Lists all shopping list labels used to categorize and sort items by store section.
+
+```
+"Show me all shopping list labels"
+"What grocery sections do I have set up?"
+"List my store section labels"
+```
+
+> **Tip:** Use this with `update_shopping_list_label_settings` to set the aisle order for a specific store.
+
+---
+
 ## Workflows
 
-### From recipe to table
-
-A complete end-to-end flow for a single meal:
+### Full cooking flow — from plan to notes
 
 ```
-1. "Find a chicken recipe for tonight"
-2. "Add it to today's dinner plan"
-3. "Add the ingredients to my shopping list"
-4. [After cooking] "Mark it as made"
+1. "What am I making tonight?"          → get_todays_mealplan
+2. "Get me ready to cook the lasagna"   → cooking_session prompt
+3. "Do I have all the equipment?"       → assistant checks tools against get_cooking_tools
+4. [After cooking] "Add a note: used half the ricotta, still great"  → create_recipe_comment
+5. "Mark it as made"                    → mark_recipe_last_made
 ```
 
-### Weekly meal planning with shopping
+---
+
+### Weekly planning with shopping trip
 
 ```
-1. "Help me plan this week's dinners" [assistant searches recipes, proposes plan]
-2. "Swap Wednesday's meal for something vegetarian"
-3. "That looks good — save it"
-4. "Now create a shopping list from this week's meal plan"
-5. [At the store] "Check off eggs, milk, and chicken"
-6. "Remove all checked items from the list"
+1. Use weekly_meal_plan prompt → assistant plans 7 days, asks for swaps, saves to Mealie
+2. Use shopping_trip prompt    → assistant builds labeled shopping list with cost estimate
+3. [At the store] "Check off eggs, milk, and chicken"  → update_shopping_list_items_bulk
+4. "Remove all checked items"  → delete_shopping_list_items_bulk
 ```
 
-### Recipe discovery and organization
+---
+
+### Share a recipe with family
 
 ```
-"Show me all my tags"
-[Note the slug for 'quick-meals']
-"Find recipes tagged 'quick-meals' in the dinner category"
-"Show me the ones I haven't made recently"
-"Add the top 3 to next week's meal plan"
+1. "Create a share link for the lasagna recipe"  → create_recipe_share_token
+2. "Get the PDF download link too"               → get_recipe_exports
+   → text both links to mom
 ```
 
-### Dinner party shopping
+---
+
+### Store-specific shopping list setup
 
 ```
-"I'm making lasagna for 8 (recipe serves 4) — add the ingredients with double quantities to my shopping list"
-"Also add a bottle of wine and some bread"
-"Show me the full list"
+1. "Show me my shopping list labels"    → get_labels (note the IDs)
+2. "Create a new list called 'Kroger'" → create_shopping_list
+3. "Set up the label order for Kroger — produce first, then dairy, then meat"
+                                        → update_shopping_list_label_settings
+4. "Add this week's meals to the Kroger list"
+                                        → add_recipes_to_shopping_list_bulk
 ```
 
-### Post-shopping cleanup
+---
+
+### Nutrition check
 
 ```
-"Check off everything I bought"
-"Remove all checked items from my grocery list"
+1. Use nutrition_summary prompt for "this week"
+   → assistant fetches each meal plan recipe, sums macros
+   → flags any recipes missing nutrition data
+2. "Which of my recipes are missing nutrition info?" → assistant lists them from above
 ```
 
-### Weekly prompt-driven planning
+---
 
-Use the built-in `weekly_meal_plan` prompt for a guided experience:
+### Recipe history and review
 
 ```
-preferences: "quick weeknight meals, family of 4, avoid fish"
+1. "What did I eat last week?"          → weekly_review prompt (period="last week")
+2. "When did I last make beef stew?"   → get_recipe_timeline (search results)
+3. "What notes did I leave on it?"     → get_recipe_comments
+4. "Plan it again for this Thursday"   → create_mealplan
 ```
 
-The assistant will search your Mealie database, propose a full 7-day plan, ask for any swaps, and save the confirmed plan — all in one conversation.
+---
+
+### Dinner party prep
+
+```
+1. "Add lasagna for 8 (recipe serves 4) to my shopping list with 2x quantities"
+                                        → add_recipe_to_shopping_list (recipeIncrementQuantity=2)
+2. "Also add a bottle of wine and some bread" → create_shopping_list_items_bulk
+3. "Show me the full list"              → get_shopping_list
+4. "Create a share link so guests can see the recipe" → create_recipe_share_token
+```
 
 ---
 
@@ -559,7 +829,7 @@ The assistant will search your Mealie database, propose a full 7-day plan, ask f
 
 ### Use slugs for filtering
 
-Always get slugs first before filtering — display names won't match.
+Always get slugs first before filtering — display names won't work.
 
 ```
 Step 1: "Show me all tags"
@@ -567,11 +837,18 @@ Step 2: Note the slug (e.g. "quick-meals")
 Step 3: "Find recipes tagged 'quick-meals'"
 ```
 
+### Use concise for planning, detailed for cooking
+
+```
+Meal planning → get_recipe_concise   (fast, low token usage)
+Cooking       → get_recipe_detailed  (full ingredients, instructions, nutrition)
+```
+
 ### Batch operations save round trips
 
 ```
-✅ "Add eggs, milk, and bread to my shopping list" [one bulk call]
-❌ "Add eggs" / "Add milk" / "Add bread" [three separate calls]
+✅ "Add eggs, milk, and bread to my shopping list"   [one bulk call]
+❌ "Add eggs" / "Add milk" / "Add bread"             [three separate calls]
 ```
 
 ### Field preservation on updates
@@ -583,8 +860,9 @@ When updating a shopping list item, only fields you mention are changed. Everyth
 → Only the checked field changes. Note, quantity, unit, etc. are untouched.
 ```
 
-### Scale recipe quantities when adding to shopping lists
+### Scale recipe quantities
 
 ```
-"Add the lasagna recipe with 2x quantities" [serves 4 → serves 8]
+"Add the lasagna recipe with 2x quantities"   → recipe serves 4, now serves 8
+"Add chicken soup for 6 (recipe serves 2)"   → recipeIncrementQuantity=3
 ```
