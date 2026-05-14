@@ -3,6 +3,19 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class RecipeCommentCreate(BaseModel):
+    text: str
+
+
+class RecipeComment(BaseModel):
+    id: Optional[str] = None
+    recipeId: Optional[str] = None
+    userId: Optional[str] = None
+    text: str
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
 class IngredientUnit(BaseModel):
     id: Optional[str] = None
     name: str

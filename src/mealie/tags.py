@@ -51,15 +51,6 @@ class TagsMixin:
         logger.info({"message": "Retrieving tags", "parameters": params})
         return self._handle_request("GET", "/api/organizers/tags", params=params)
 
-    def get_empty_tags(self) -> List[Dict[str, Any]]:
-        """Get all tags that have no recipes assigned.
-
-        Returns:
-            List of empty tags
-        """
-        logger.info({"message": "Retrieving empty tags"})
-        return self._handle_request("GET", "/api/organizers/tags/empty")
-
     def create_tag(self, name: str) -> Dict[str, Any]:
         """Create a new recipe tag.
 

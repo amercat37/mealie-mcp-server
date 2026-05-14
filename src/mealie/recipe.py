@@ -242,6 +242,104 @@ class RecipeMixin:
         logger.info({"message": "Uploading recipe asset", "slug": slug, "filename": filename})
         return self._handle_request("POST", f"/api/recipes/{slug}/assets", files=files)
 
+    def get_recipe_comments(self, slug: str) -> List[Dict[str, Any]]:
+        """Get all comments for a recipe.
+
+        Args:
+            slug: The slug identifier of the recipe
+
+        Returns:
+            List of comment objects
+        """
+        if not slug:
+            raise ValueError("Recipe slug cannot be empty")
+
+        logger.info({"message": "Retrieving recipe comments", "slug": slug})
+        return self._handle_request("GET", f"/api/recipes/{slug}/comments")
+
+    def create_recipe_comment(self, slug: str, text: str) -> Dict[str, Any]:
+        """Post a comment on a recipe.
+
+        Args:
+            slug: The slug identifier of the recipe
+            text: The comment text
+
+        Returns:
+            JSON response containing the created comment
+        """
+        if not slug:
+            raise ValueError("Recipe slug cannot be empty")
+        if not text:
+            raise ValueError("Comment text cannot be empty")
+
+        logger.info({"message": "Creating recipe comment", "slug": slug})
+        return self._handle_request("POST", f"/api/recipes/{slug}/comments", json={"text": text})
+
+    def get_recipe_timeline(
+        self,
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Get a chronological activity feed across all recipes.
+
+        Args:
+            page: Page number to retrieve
+            per_page: Number of items per page
+
+        Returns:
+            JSON response containing timeline events
+        """
+        param_dict = {"page": page, "perPage": per_page}
+        params = format_api_params(param_dict)
+
+        logger.info({"message": "Retrieving recipe timeline"})
+        return self._handle_request("GET", "/api/recipes/timeline", params=params)
+
+    def get_recipe_share_tokens(self, slug: str) -> List[Dict[str, Any]]:
+        """Get all share tokens for a recipe.
+
+        Args:
+            slug: The slug identifier of the recipe
+
+        Returns:
+            List of share token objects
+        """
+        if not slug:
+            raise ValueError("Recipe slug cannot be empty")
+
+        logger.info({"message": "Retrieving recipe share tokens", "slug": slug})
+        return self._handle_request("GET", f"/api/recipes/{slug}/share")
+
+    def create_recipe_share_token(self, slug: str) -> Dict[str, Any]:
+        """Create a public share link for a recipe.
+
+        Args:
+            slug: The slug identifier of the recipe
+
+        Returns:
+            JSON response containing the new share token
+        """
+        if not slug:
+            raise ValueError("Recipe slug cannot be empty")
+
+        logger.info({"message": "Creating recipe share token", "slug": slug})
+        return self._handle_request("POST", f"/api/recipes/{slug}/share", json={})
+
+    def get_recipe_exports(self, slug: str) -> Dict[str, Any]:
+        """Get available export formats and download links for a recipe.
+
+        Args:
+            slug: The slug identifier of the recipe
+
+        Returns:
+            JSON response containing available export formats and URLs
+        """
+        if not slug:
+            raise ValueError("Recipe slug cannot be empty")
+
+        logger.info({"message": "Retrieving recipe exports", "slug": slug})
+        return self._handle_request("GET", f"/api/recipes/{slug}/exports")
+
     def delete_recipe(self, slug: str) -> Dict[str, Any]:
         """Delete a recipe
 

@@ -77,6 +77,83 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
+    def update_shopping_list(list_id: str, name: str) -> Dict[str, Any]:
+        """Rename an existing shopping list.
+
+        Args:
+            list_id: The UUID of the shopping list to update
+            name: New name for the shopping list
+
+        Returns:
+            Dict[str, Any]: The updated shopping list
+        """
+        try:
+            logger.info({"message": "Updating shopping list", "list_id": list_id})
+            return mealie.update_shopping_list(list_id, {"name": name})
+        except Exception as e:
+            error_msg = f"Error updating shopping list '{list_id}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def update_shopping_list_label_settings(
+        list_id: str,
+        label_settings: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Set the label display order for a shopping list (e.g. to match a specific store's layout).
+
+        Each entry in label_settings must include a labelId and position.
+        Example: [{"labelId": "uuid", "position": 0}, {"labelId": "uuid2", "position": 1}]
+
+        Args:
+            list_id: The UUID of the shopping list
+            label_settings: Ordered list of label setting objects
+
+        Returns:
+            Dict[str, Any]: The updated label settings
+        """
+        try:
+            logger.info({"message": "Updating shopping list label settings", "list_id": list_id})
+            return mealie.update_shopping_list_label_settings(list_id, label_settings)
+        except Exception as e:
+            error_msg = f"Error updating label settings for list '{list_id}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def add_recipes_to_shopping_list_bulk(
+        list_id: str,
+        recipes: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Add multiple recipes' ingredients to a shopping list in one request.
+
+        Each entry must include an id (recipe UUID). Optionally include
+        recipeIncrementQuantity to scale ingredients.
+        Example: [{"id": "recipe-uuid", "recipeIncrementQuantity": 1.0}]
+
+        Args:
+            list_id: The UUID of the shopping list
+            recipes: List of recipe objects with id and optional quantity multiplier
+
+        Returns:
+            Dict[str, Any]: The updated shopping list
+        """
+        try:
+            logger.info({
+                "message": "Bulk adding recipes to shopping list",
+                "list_id": list_id,
+                "count": len(recipes),
+            })
+            return mealie.add_recipes_to_shopping_list_bulk(list_id, recipes)
+        except Exception as e:
+            error_msg = f"Error bulk adding recipes to shopping list '{list_id}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
     def delete_shopping_list(list_id: str) -> Dict[str, Any]:
         """Delete a specific shopping list.
 
