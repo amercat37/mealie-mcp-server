@@ -4,6 +4,26 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.3.0] — 2026-05-14
+
+### Added
+
+- **7 new MCP tools** for recipe creation and food library management:
+  - Recipes: `create_recipe`, `duplicate_recipe`
+  - Foods: `create_food`, `merge_foods`, `get_empty_foods`
+  - Categories: `get_empty_categories` (restored)
+  - Tags: `get_empty_tags` (restored)
+- **1 new server prompt**: `recipe_builder` — guided recipe creation that follows existing category/tag/tool conventions, matches ingredients to the food library, defaults to the "My Recipes" cookbook (`my-recipes` tag)
+- **3 new Pydantic models**: `RecipeCreate`, `RecipeIngredientCreate`, `RecipeInstructionCreate`
+
+### Changed
+
+- `create_recipe` tool performs POST (create skeleton) + PATCH (fill all fields) automatically — the caller provides a single `RecipeCreate` payload and gets a fully populated recipe back
+- Food slug/name resolution happens inside `create_recipe` — categories, tags, tools resolved to full objects; food names fuzzy-matched against the library before any new food is created
+- API coverage improves from 45 tools (53%) to 52 tools (~61%)
+
+---
+
 ## [1.2.0] — 2026-05-14
 
 ### Added

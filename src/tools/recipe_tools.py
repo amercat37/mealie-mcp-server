@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
-from models.recipe import Recipe, RecipeIngredient, RecipeInstruction
+from models.recipe import Recipe, RecipeCreate, RecipeIngredient, RecipeInstruction
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -255,6 +255,137 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             return mealie.get_recipe_exports(slug)
         except Exception as e:
             error_msg = f"Error fetching exports for recipe '{slug}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def create_recipe(recipe: RecipeCreate) -> Dict[str, Any]:
+        """Create a new recipe in Mealie.
+
+        Before calling this tool:
+        1. Fetch 2-3 existing similar recipes with get_recipe_detailed to observe the
+           category/tag/tool patterns used — follow those patterns, don't invent new ones.
+        2. Search existing foods with get_foods before listing any ingredient — reuse
+           existing food names exactly. Only specify a food name that doesn't exist if
+           truly necessary; a separate create_food call will add it.
+        3. Always include "my-recipes" in tags (default). Use "the-autoimmune-solution"
+           instead if the recipe belongs to that cookbook.
+
+        The tool resolves all slug and name references to IDs automatically before saving.
+
+        Args:
+            recipe: RecipeCreate object with name, description, categories (slugs),
+                tags (slugs), tools (slugs), ingredients (food/unit names), instructions,
+                timing, servings, source URL, nutrition, and notes.
+
+        Returns:
+            Dict[str, Any]: The fully created recipe as returned by Mealie
+        """
+        try:
+            logger.info({"message": "Creating recipe", "name": recipe.name})
+
+            # Step 1: POST to create skeleton, get slug
+            slug = mealie.create_recipe(recipe.name)
+            if not isinstance(slug, str):
+                slug = slug.get("slug", slug)
+
+            # Step 2: Resolve categories, tags, tools slugs → full objects
+            def resolve_organizer(items: List[str], fetch_fn) -> List[Dict[str, Any]]:
+                if not items:
+                    return []
+                all_items = fetch_fn(per_page=200).get("items", [])
+                lookup = {i["slug"]: i for i in all_items}
+                return [lookup[s] for s in items if s in lookup]
+
+            resolved_categories = resolve_organizer(recipe.recipeCategory, mealie.get_categories)
+            resolved_tags = resolve_organizer(recipe.tags, mealie.get_tags)
+            resolved_tools = resolve_organizer(recipe.tools, mealie.get_organizer_tools)
+
+            # Step 3: Resolve ingredient food names and unit names → full objects
+            all_foods = mealie.get_foods(per_page=500).get("items", [])
+            food_lookup = {f["name"].lower(): f for f in all_foods}
+
+            all_units = mealie.get_organizer_units(per_page=200).get("items", [])
+            unit_lookup = {u["name"].lower(): u for u in all_units}
+            unit_lookup.update({u.get("abbreviation", "").lower(): u for u in all_units if u.get("abbreviation")})
+
+            resolved_ingredients = []
+            for ing in recipe.recipeIngredient:
+                resolved: Dict[str, Any] = {}
+                if ing.title:
+                    resolved["title"] = ing.title
+                if ing.quantity is not None:
+                    resolved["quantity"] = ing.quantity
+                if ing.note:
+                    resolved["note"] = ing.note
+                resolved["disableAmount"] = ing.disableAmount
+                if ing.food:
+                    food_obj = food_lookup.get(ing.food.lower())
+                    if food_obj:
+                        resolved["food"] = food_obj
+                    else:
+                        resolved["food"] = {"name": ing.food}
+                if ing.unit:
+                    unit_obj = unit_lookup.get(ing.unit.lower())
+                    if unit_obj:
+                        resolved["unit"] = unit_obj
+                    else:
+                        resolved["unit"] = {"name": ing.unit}
+                resolved_ingredients.append(resolved)
+
+            # Step 4: Build patch payload
+            patch_data: Dict[str, Any] = {
+                "recipeCategory": resolved_categories,
+                "tags": resolved_tags,
+                "tools": resolved_tools,
+                "recipeIngredient": resolved_ingredients,
+                "recipeInstructions": [i.model_dump(exclude_none=True) for i in recipe.recipeInstructions],
+            }
+            if recipe.description:
+                patch_data["description"] = recipe.description
+            if recipe.prepTime:
+                patch_data["prepTime"] = recipe.prepTime
+            if recipe.performTime:
+                patch_data["performTime"] = recipe.performTime
+            if recipe.totalTime:
+                patch_data["totalTime"] = recipe.totalTime
+            if recipe.recipeYield:
+                patch_data["recipeYield"] = recipe.recipeYield
+            if recipe.recipeServings:
+                patch_data["recipeServings"] = recipe.recipeServings
+            if recipe.orgURL:
+                patch_data["orgURL"] = recipe.orgURL
+            if recipe.nutrition:
+                patch_data["nutrition"] = recipe.nutrition.model_dump(exclude_none=True)
+            if recipe.notes:
+                patch_data["notes"] = recipe.notes
+
+            # Step 5: PATCH with full data
+            return mealie.patch_recipe(slug, patch_data)
+        except Exception as e:
+            error_msg = f"Error creating recipe '{recipe.name}': {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
+    @mcp.tool()
+    def duplicate_recipe(slug: str, name: Optional[str] = None) -> Dict[str, Any]:
+        """Clone an existing recipe under a new name. Use this before making
+        significant variations (e.g., a vegetarian version, a scaled-up batch).
+
+        Args:
+            slug: The unique text identifier of the recipe to clone
+            name: Name for the new copy (defaults to original name with copy indicator)
+
+        Returns:
+            Dict[str, Any]: The newly created duplicate recipe
+        """
+        try:
+            logger.info({"message": "Duplicating recipe", "slug": slug, "name": name})
+            return mealie.duplicate_recipe(slug, name=name)
+        except Exception as e:
+            error_msg = f"Error duplicating recipe '{slug}': {str(e)}"
             logger.error({"message": error_msg})
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)

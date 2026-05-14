@@ -12,6 +12,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 ### 🍽️ Recipe Management
 - **Advanced Search**: Filter by text, categories, tags, and tools with AND/OR logic
 - **Dual Detail Levels**: Concise summary for planning, full details for cooking
+- **Create Recipes**: Build fully structured recipes from scratch — categories, tags, tools, and ingredients resolved from existing library conventions automatically
+- **Duplicate Recipes**: Clone any recipe under a new name for variations or scaling
 - **Metadata Tracking**: Mark recipes as made, track last made dates
 - **Comments**: Read and write cooking notes per recipe
 - **Timeline**: View chronological cooking activity across all recipes
@@ -25,13 +27,14 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 - **Bulk Operations**: Create, update, or delete multiple items at once
 - **Recipe Integration**: Add one or many recipes' ingredients to a list at once
 
-### 🏷️ Organization (read-only)
-- **Categories**: Browse recipe categories (Breakfast, Dinner, etc.)
-- **Tags**: Browse and filter by recipe tags
+### 🏷️ Organization
+- **Categories**: Browse recipe categories (Breakfast, Dinner, etc.); find unused categories
+- **Tags**: Browse and filter by recipe tags; find unused tags
+- **Foods**: Search the ingredient food library; add new foods; merge duplicates; find unused entries
 - **Tools**: List cooking equipment tagged on recipes
 - **Units**: List units of measurement used in ingredients
 - **Labels**: List shopping list labels (grocery store sections)
-- **Cookbooks**: Browse curated recipe collections
+- **Cookbooks**: Browse curated recipe collections (My Recipes, The Autoimmune Solution)
 
 ### 📅 Meal Planning
 - **View & Create**: See all meal plans, today's menu, and add new entries
@@ -39,7 +42,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 - **Bulk Creation**: Add multiple meals at once
 
 ### 💬 Prompts
-Five built-in conversation starters that pre-configure the assistant for specific tasks:
+Six built-in conversation starters that pre-configure the assistant for specific tasks:
+- **`recipe_builder`**: Guided recipe creation — fetches similar recipes to match your conventions, resolves foods/tags/categories from your existing library, defaults to My Recipes cookbook
 - **`weekly_meal_plan`**: Guided meal planning with tag filtering, sandwich rules, and leftover logic
 - **`shopping_trip`**: Consolidated shopping list from your meal plan, grouped by store section with cost estimates
 - **`cooking_session`**: Full recipe details, equipment, and cooking notes staged before you start cooking

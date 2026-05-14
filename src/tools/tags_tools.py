@@ -74,4 +74,21 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)
 
+    @mcp.tool()
+    def get_empty_tags() -> Dict[str, Any]:
+        """List tags that have no recipes assigned. Use this to find and clean
+        up stale or unused tag entries.
+
+        Returns:
+            Dict[str, Any]: Tags with no associated recipes
+        """
+        try:
+            logger.info({"message": "Fetching empty tags"})
+            return mealie.get_empty_tags()
+        except Exception as e:
+            error_msg = f"Error fetching empty tags: {str(e)}"
+            logger.error({"message": error_msg})
+            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+            raise ToolError(error_msg)
+
 

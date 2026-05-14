@@ -6,40 +6,34 @@ This document compares the MCP server implementation against the official Mealie
 
 | Category | Total Endpoints | Implemented Tools | Coverage |
 |----------|----------------|-------------|----------|
-| Recipe Operations | 14 | 4 | 29% |
+| Recipe Operations | 14 | 6 | 43% |
 | Recipe Advanced Features | 8 | 6 | 75% |
 | Shopping Lists | 17 | 17 | 100% |
-| Categories | 6 | 3 | 50% |
-| Tags | 6 | 3 | 50% |
+| Categories | 6 | 4 | 67% |
+| Tags | 6 | 4 | 67% |
 | Meal Plans | 7 | 6 | 86% |
-| Foods | 5 | 2 | 40% |
+| Foods | 7 | 5 | 71% |
 | Household Management | 8 | 1 | 13% |
 | Organizer Extras | 6 | 3 | 50% |
 | Admin & User Management | 8 | 0 | 0% |
-| **Total** | **85** | **45** | **53%** |
+| **Total** | **87** | **52** | **60%** |
 
 ## Detailed Coverage
 
-### ✅ Recipe Operations (10/20 implemented)
+### ✅ Recipe Operations (6/14 implemented)
 
 **Implemented:**
 - ✅ `GET /api/recipes` - Search and filter the recipe library with pagination and advanced filtering
 - ✅ `GET /api/recipes/{slug}` - Fetch full recipe details including ingredients, instructions, and nutrition
 - ✅ `GET /api/recipes/{slug}` - Fetch a concise recipe summary (name, tags, categories, image only)
 - ✅ `PATCH /api/recipes/{slug}/last-made` - Record today's date as the last time this recipe was made
-- ✅ `GET /api/recipes/{slug}/comments` - List all comments on a recipe
-- ✅ `POST /api/recipes/{slug}/comments` - Post a comment on a recipe
-- ✅ `GET /api/recipes/timeline` - View a chronological activity feed across all recipes
-- ✅ `GET /api/recipes/{slug}/share` - List public share links for a recipe
-- ✅ `POST /api/recipes/{slug}/share` - Create a public share link for a recipe
-- ✅ `GET /api/recipes/{slug}/exports` - Download a recipe in a supported export format (JSON, PDF, etc.)
+- ✅ `POST /api/recipes` + `PATCH /api/recipes/{slug}` - Create a fully populated recipe in one tool call (POST skeleton + PATCH all fields)
+- ✅ `POST /api/recipes/{slug}/duplicate` - Clone a recipe under a new name
 
 **Not Implemented:**
-- 🚫 `POST /api/recipes` - Create a new recipe from scratch
 - 🚫 `PUT /api/recipes/{slug}` - Replace all fields of an existing recipe with a new version
 - 🚫 `PATCH /api/recipes/{slug}` - Update individual recipe fields without replacing the whole record
 - 🚫 `DELETE /api/recipes/{slug}` - Permanently delete a recipe
-- 🚫 `POST /api/recipes/{slug}/duplicate` - Clone a recipe under a new name
 - 🚫 `POST /api/recipes/{slug}/image` - Scrape and attach an image to a recipe from a URL
 - 🚫 `PUT /api/recipes/{slug}/image` - Upload an image file directly to a recipe
 - 🚫 `POST /api/recipes/{slug}/assets` - Attach a file asset (PDF, etc.) to a recipe
@@ -75,41 +69,44 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `DELETE /api/households/shopping/items/{id}` - Remove a single item from a shopping list
 - ✅ `DELETE /api/households/shopping/items` - Remove multiple items from a shopping list by query parameters
 
-### ✅ Categories (4/5 implemented)
+### ✅ Categories (4/6 implemented)
 
 **Implemented:**
 - ✅ `GET /api/organizers/categories` - List all recipe categories
 - ✅ `GET /api/organizers/categories/{id}` - Fetch a single category and its assigned recipes by ID
 - ✅ `GET /api/organizers/categories/slug/{slug}` - Fetch a category by its URL-friendly slug
+- ✅ `GET /api/organizers/categories/empty` - List categories that have no recipes assigned
 
 **Not Implemented:**
 - 🚫 `POST /api/organizers/categories` - Create a new recipe category
 - 🚫 `PUT /api/organizers/categories/{id}` - Rename or update a category
 - 🚫 `DELETE /api/organizers/categories/{id}` - Delete a category
 
-### ✅ Tags (4/5 implemented)
+### ✅ Tags (4/6 implemented)
 
 **Implemented:**
 - ✅ `GET /api/organizers/tags` - List all recipe tags
 - ✅ `GET /api/organizers/tags/{id}` - Fetch a single tag and its assigned recipes by ID
 - ✅ `GET /api/organizers/tags/slug/{slug}` - Fetch a tag by its URL-friendly slug
+- ✅ `GET /api/organizers/tags/empty` - List tags that have no recipes assigned
 
 **Not Implemented:**
 - 🚫 `POST /api/organizers/tags` - Create a new recipe tag
 - 🚫 `PUT /api/organizers/tags/{id}` - Rename or update a tag
 - 🚫 `DELETE /api/organizers/tags/{id}` - Delete a tag
 
-### ✅ Foods (2/7 implemented)
+### ✅ Foods (5/7 implemented)
 
 **Implemented:**
 - ✅ `GET /api/foods` - Search and list foods used in recipe ingredients
 - ✅ `GET /api/foods/{id}` - Fetch a single food entry by ID
+- ✅ `GET /api/foods/empty` - List foods not referenced by any recipe ingredient
+- ✅ `POST /api/foods` - Add a new food to the ingredient food library
+- ✅ `PUT /api/foods/merge` - Merge a duplicate food entry into a canonical one
 
 **Not Implemented:**
-- 🚫 `POST /api/foods` - Add a new food to the ingredient food library
 - 🚫 `PUT /api/foods/{id}` - Update a food entry's name or attributes
 - 🚫 `DELETE /api/foods/{id}` - Remove a food from the library
-- 🚫 `MERGE /api/foods/merge` - Merge duplicate food entries into one canonical entry
 
 ### ✅ Meal Plans (5/6 implemented)
 
@@ -124,7 +121,7 @@ This document compares the MCP server implementation against the official Mealie
 **Not Implemented:**
 - 🚫 `GET /api/households/mealplans/{id}` - Fetch a single meal plan entry by ID
 
-### ✅ Recipe Advanced Features (6/8 implemented)
+### ✅ Recipe Advanced Features (6/8 implemented — included in Recipe Operations above)
 
 **Implemented:**
 - ✅ `GET /api/recipes/{slug}/comments` - List all comments on a recipe
