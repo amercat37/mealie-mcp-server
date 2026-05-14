@@ -10,11 +10,15 @@ class RecipeCommentCreate(BaseModel):
 class RecipeNutritionCreate(BaseModel):
     calories: Optional[str] = None
     carbohydrateContent: Optional[str] = None
+    cholesterolContent: Optional[str] = None
     fatContent: Optional[str] = None
     fiberContent: Optional[str] = None
     proteinContent: Optional[str] = None
+    saturatedFatContent: Optional[str] = None
     sodiumContent: Optional[str] = None
     sugarContent: Optional[str] = None
+    transFatContent: Optional[str] = None
+    unsaturatedFatContent: Optional[str] = None
 
 
 class RecipeIngredientCreate(BaseModel):
