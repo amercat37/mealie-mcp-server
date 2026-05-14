@@ -1,6 +1,6 @@
 # Tests
 
-Two test scripts covering all 54 MCP tools at two layers.
+Two test scripts covering all 53 MCP tools at two layers.
 
 ## Setup
 
@@ -38,7 +38,7 @@ python tests/test_mcp_server.py
 ```
 
 **What it tests:**
-- All 54 tools are registered (`session.list_tools()`)
+- All 53 tools are registered (`session.list_tools()`)
 - Every tool can be called and returns a valid response
 - Restricted delete guards reject non-test slugs/names
 - Full create → read → update → delete cycle via MCP tool calls
