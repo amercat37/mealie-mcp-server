@@ -1,0 +1,20 @@
+services:
+  mealie_mcp_server:
+    image: mealie_mcp_server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      tags:
+        - mealie_mcp_server:latest
+    container_name: mealie_mcp_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - '8000:8000'
+    networks:
+      - mealie
+
+networks:
+  mealie:
+    external: true
