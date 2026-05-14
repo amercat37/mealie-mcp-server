@@ -121,5 +121,10 @@ class FoodsMixin:
         if not food_id:
             raise ValueError("Food ID cannot be empty")
 
-        logger.info({"message": "Deleting food", "food_id": food_id})
+        food = self._handle_request("GET", f"/api/foods/{food_id}")
+        name = food.get("name", "")
+        if not name.startswith("__test_"):
+            raise ValueError(f"delete_food is restricted to foods named '__test_*'. Got: '{name}'")
+
+        logger.info({"message": "Deleting food", "food_id": food_id, "name": name})
         return self._handle_request("DELETE", f"/api/foods/{food_id}")

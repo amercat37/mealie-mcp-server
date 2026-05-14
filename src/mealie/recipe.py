@@ -368,6 +368,8 @@ class RecipeMixin:
         """
         if not slug:
             raise ValueError("Recipe slug cannot be empty")
+        if not slug.startswith("test-"):
+            raise ValueError(f"delete_recipe is restricted to slugs starting with 'test-'. Got: '{slug}'")
 
         logger.info({"message": "Deleting recipe", "slug": slug})
         return self._handle_request("DELETE", f"/api/recipes/{slug}")
