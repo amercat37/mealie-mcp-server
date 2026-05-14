@@ -12,11 +12,11 @@ This document compares the MCP server implementation against the official Mealie
 | Categories | 6 | 4 | 67% |
 | Tags | 6 | 4 | 67% |
 | Meal Plans | 7 | 6 | 86% |
-| Foods | 7 | 6 | 86% |
+| Foods | 7 | 5 | 71% |
 | Household Management | 8 | 1 | 13% |
 | Organizer Extras | 6 | 3 | 50% |
 | Admin & User Management | 8 | 0 | 0% |
-| **Total** | **87** | **54** | **62%** |
+| **Total** | **87** | **53** | **61%** |
 
 ## Detailed Coverage
 
@@ -100,12 +100,12 @@ This document compares the MCP server implementation against the official Mealie
 **Implemented:**
 - ✅ `GET /api/foods` - Search and list foods used in recipe ingredients
 - ✅ `GET /api/foods/{id}` - Fetch a single food entry by ID
-- ✅ `GET /api/foods/empty` - List foods not referenced by any recipe ingredient
 - ✅ `POST /api/foods` - Add a new food to the ingredient food library
 - ✅ `PUT /api/foods/merge` - Merge a duplicate food entry into a canonical one
 - ✅ `DELETE /api/foods/{id}` - Delete a food entry (restricted to `__test_*` names — test suite only)
 
 **Not Implemented:**
+- 🚫 `GET /api/foods/empty` - Not exposed by Mealie's API (endpoint does not exist)
 - 🚫 `PUT /api/foods/{id}` - Update a food entry's name or attributes
 
 ### ✅ Meal Plans (5/6 implemented)
@@ -125,11 +125,11 @@ This document compares the MCP server implementation against the official Mealie
 
 **Implemented:**
 - ✅ `GET /api/recipes/{slug}/comments` - List all comments on a recipe
-- ✅ `POST /api/recipes/{slug}/comments` - Post a comment on a recipe
-- ✅ `GET /api/recipes/timeline` - View a chronological activity feed across all recipes
-- ✅ `GET /api/recipes/{slug}/share` - List public share links for a recipe
-- ✅ `POST /api/recipes/{slug}/share` - Create a public share link for a recipe
-- ✅ `GET /api/recipes/{slug}/exports` - Download a recipe in a supported export format (JSON, PDF, etc.)
+- ✅ `POST /api/comments` - Post a comment on a recipe (requires recipe UUID, resolved from slug)
+- ✅ `GET /api/recipes/timeline/events` - View a chronological activity feed across all recipes
+- ✅ `GET /api/shared/recipes` - List public share links for a recipe (filtered by recipe ID)
+- ✅ `POST /api/shared/recipes` - Create a public share link for a recipe
+- ✅ `GET /api/recipes/exports` - List available export formats and construct download URLs per recipe
 
 **Not Implemented:**
 - 🚫 `GET /api/households/recipe-parser` - Fetch the household's recipe scraper/parser configuration
@@ -153,8 +153,8 @@ This document compares the MCP server implementation against the official Mealie
 
 **Implemented:**
 - ✅ `GET /api/organizers/tools` - List cooking tools used to tag which equipment a recipe requires
-- ✅ `GET /api/organizers/units` - List units of measurement used in recipe ingredient quantities
-- ✅ `GET /api/organizers/labels` - List labels used to categorize and sort shopping list items
+- ✅ `GET /api/units` - List units of measurement used in recipe ingredient quantities
+- ✅ `GET /api/groups/labels` - List labels used to categorize and sort shopping list items
 
 **Not Implemented:**
 - 🚫 `POST /api/organizers/tools` - Add a new cooking tool to the organizer library

@@ -6,8 +6,8 @@ No MCP server required — runs anywhere Python runs.
 
 Usage:
     cd mealie-mcp-server
-    cp .env.testing.template .env.testing
-    # edit .env.testing with your values
+    cp tests/.env.testing.template tests/.env.testing
+    # edit tests/.env.testing with your values
     python tests/test_fetcher.py
 """
 
@@ -17,7 +17,7 @@ import sys
 
 from dotenv import load_dotenv
 
-load_dotenv(".env.testing")
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env.testing"))
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -51,6 +51,28 @@ def run(mealie: MealieFetcher) -> None:
     state: dict = {}
 
     # -----------------------------------------------------------------------
+    section("Pre-test cleanup — remove stale test artifacts")
+    # -----------------------------------------------------------------------
+    for slug in ["test-recipe-copy", "test-recipe"]:
+        try:
+            mealie.delete_recipe(slug)
+            print(f"  [cleanup] deleted stale recipe: {slug}")
+        except Exception:
+            pass
+
+    try:
+        foods = mealie.get_foods(search="__test_food", per_page=50)
+        for f in foods.get("items", []):
+            if f.get("name", "").startswith("__test_"):
+                try:
+                    mealie.delete_food(f["id"])
+                    print(f"  [cleanup] deleted stale food: {f['name']}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # -----------------------------------------------------------------------
     section("Recipes — read")
     # -----------------------------------------------------------------------
     try:
@@ -77,7 +99,10 @@ def run(mealie: MealieFetcher) -> None:
                 "recipeCategory": [],
                 "tags": [],
                 "recipeIngredient": [],
-                "recipeInstructions": [{"text": "Test step 1"}, {"text": "Test step 2"}],
+                "recipeInstructions": [
+                    {"title": "", "text": "Test step 1", "summary": "", "ingredientReferences": []},
+                    {"title": "", "text": "Test step 2", "summary": "", "ingredientReferences": []},
+                ],
                 "recipeYield": "1 serving",
             }
             r = mealie.patch_recipe(slug, patch_data)
@@ -224,12 +249,6 @@ def run(mealie: MealieFetcher) -> None:
             check("get_food", "id" in r)
         except Exception as e:
             check("get_food", False, str(e))
-
-    try:
-        r = mealie.get_empty_foods()
-        check("get_empty_foods", isinstance(r, (dict, list)))
-    except Exception as e:
-        check("get_empty_foods", False, str(e))
 
     try:
         r = mealie.create_food("__test_food_a__")
@@ -389,7 +408,7 @@ def run(mealie: MealieFetcher) -> None:
 
             try:
                 r = mealie.add_recipes_to_shopping_list_bulk(
-                    lid, [{"id": recipe_id, "recipeIncrementQuantity": 1}]
+                    lid, [{"recipeId": recipe_id, "recipeIncrementQuantity": 1}]
                 )
                 check("add_recipes_to_shopping_list_bulk", isinstance(r, (dict, list)))
             except Exception as e:

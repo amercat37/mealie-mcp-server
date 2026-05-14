@@ -101,7 +101,9 @@ class ShoppingListMixin:
             raise ValueError("Shopping list data cannot be empty")
 
         logger.info({"message": "Updating shopping list", "list_id": list_id})
-        return self._handle_request("PUT", f"/api/households/shopping/lists/{list_id}", json=list_data)
+        current = self._handle_request("GET", f"/api/households/shopping/lists/{list_id}")
+        merged = {**current, **list_data}
+        return self._handle_request("PUT", f"/api/households/shopping/lists/{list_id}", json=merged)
 
     def delete_shopping_list(self, list_id: str) -> Dict[str, Any]:
         """Delete a specific shopping list.
@@ -269,7 +271,11 @@ class ShoppingListMixin:
             payload["labelId"] = label_id
 
         logger.info({"message": "Creating shopping list item", "note": note})
-        return self._handle_request("POST", "/api/households/shopping/items", json=payload)
+        result = self._handle_request("POST", "/api/households/shopping/items", json=payload)
+        if isinstance(result, dict) and "createdItems" in result:
+            items = result["createdItems"]
+            return items[0] if items else result
+        return result
 
     def create_shopping_list_items_bulk(
         self,
@@ -385,8 +391,6 @@ class ShoppingListMixin:
         """
         if not list_id:
             raise ValueError("Shopping list ID cannot be empty")
-        if not label_settings:
-            raise ValueError("Label settings cannot be empty")
 
         logger.info({"message": "Updating shopping list label settings", "list_id": list_id})
         return self._handle_request(
@@ -405,7 +409,7 @@ class ShoppingListMixin:
         Args:
             list_id: UUID of the shopping list
             recipes: List of recipe objects, each containing:
-                - id (str): UUID of the recipe
+                - recipeId (str): UUID of the recipe
                 - recipeIncrementQuantity (float, optional): Quantity multiplier
 
         Returns:
