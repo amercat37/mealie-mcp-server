@@ -4,6 +4,21 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.3] — 2026-05-15
+
+### Fixed
+
+- `src/tools/recipe_tools.py` (`create_recipe`) — unknown ingredient foods are now auto-created via `POST /api/foods` before the recipe PATCH. Previously a name-only food object (no `id`) was sent, causing Mealie to return a 500 (`ValueError: Expected 'id' to be provided for food`). Foods are cached in `food_lookup` for the duration of the call so the same unknown food is only created once per recipe.
+- `src/tools/recipe_tools.py` (`create_recipe`) — unknown ingredient units are now silently dropped instead of sending a name-only unit object, which carried the same 500 risk. No `create_unit` endpoint exists in Mealie.
+- `src/prompts.py` (`shopping_trip`) — removed hardcoded store names from the prompt; assistant now infers the store from context rather than defaulting to specific retailers.
+
+### Tests
+
+- `tests/test_fetcher.py` — added negative test: `patch_recipe` with a name-only food (no `id`) must return 500, documenting the Mealie requirement that drove the fix above.
+- `tests/test_mcp_server.py` — added end-to-end test: `create_recipe` with `__test_auto_food__` as an ingredient food; verifies the recipe succeeds and the food appears in the catalog, then cleans up both. Pre-test cleanup also covers the `test-recipe-auto-food` slug.
+
+---
+
 ## [1.4.2] — 2026-05-14
 
 ### Changed

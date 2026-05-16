@@ -56,7 +56,9 @@ All test artifacts use `__test_*` naming so they are visually obvious in the Mea
 |----------|------|
 | Recipe | `__test_recipe__` → slug `test-recipe` |
 | Recipe copy | `__test_recipe_copy__` → slug `test-recipe-copy` |
+| Auto-food recipe | `__test_recipe_auto_food__` → slug `test-recipe-auto-food` |
 | Food A | `__test_food_a__` |
 | Food B | `__test_food_b__` |
+| Auto-created food | `__test_auto_food__` |
 | Shopping list | `__test_shopping_list__` |
 | Meal plan | date `2099-01-01` |
