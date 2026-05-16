@@ -4,6 +4,17 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.5] — 2026-05-15
+
+### Fixed
+
+- `src/prompts.py` (`recipe_builder`) — Step 2 time format corrected from ISO 8601 (`"PT30M"`) to plain text (`"30 minutes"`, `"1 hour"`).
+- `src/prompts.py` (`recipe_builder`) — Step 2 yield updated to describe all three fields: servings count (int), yield quantity (int), and yield text (e.g. `"burgers (1 burger per serving)"`).
+- `src/prompts.py` (`recipe_builder`) — Step 2 nutrition changed from optional to required; all eleven fields must be populated with estimates if exact values are unknown.
+- `src/prompts.py` (`recipe_builder`) — Step 3 food resolution updated to reflect that `create_recipe` auto-creates unknown foods; manual `create_food` is now described as optional, only needed when a shopping list label should be assigned upfront.
+
+---
+
 ## [1.4.4] — 2026-05-15
 
 ### Fixed
