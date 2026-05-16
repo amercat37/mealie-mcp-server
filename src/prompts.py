@@ -391,9 +391,11 @@ Ask the user for all required details conversationally. Collect:
 - Ingredients — for each: quantity, unit, food name, and any note
 - Instructions — numbered steps; use section headers if needed
 - Prep time, cook time, total time — plain text (e.g. "30 minutes", "1 hour", "1 hour 30 minutes")
-- Servings and yield — three fields: number of servings (e.g. 6), yield quantity (same number),
-  and yield text describing what one serving is (e.g. "burgers (1 burger per serving)",
-  "cups (1 cup per serving)", "bowls (1 bowl per serving)")
+- Servings and yield — three independent fields:
+    - recipeServings: number of people served (e.g. 2)
+    - recipeYieldQuantity: total output quantity (e.g. 6 for 6 fillets, 2 for 2 cups)
+    - recipeYield: unit + per-serving breakdown (e.g. "fillets (3 fillets per serving)", "cups (1/2 cup per serving)")
+  Nutrition values are per serving.
 - Source URL if applicable
 - Nutrition — required; estimate from standard sources if the user doesn't have exact values.
   All eleven fields must be populated: calories, carbohydrate, cholesterol, fat, fiber, protein,
