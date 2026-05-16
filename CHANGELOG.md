@@ -4,6 +4,16 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.6] — 2026-05-15
+
+### Fixed
+
+- `src/models/recipe.py` — added `recipeYieldQuantity: Optional[int]` to `RecipeCreate`. Previously missing, so the field was always 0 regardless of what the LLM provided.
+- `src/tools/recipe_tools.py` — `recipeYieldQuantity` is now written to the PATCH payload. Also corrected the docstring: `recipeServings` (people served), `recipeYieldQuantity` (total output, e.g. 6 fillets), and `recipeYield` (unit + per-serving text) are three independent fields, not duplicates of each other. Nutrition values are per serving.
+- `src/prompts.py` (`recipe_builder`) — yield instructions updated to match: three independent fields with correct semantics and examples (e.g. 6 fillets / 2 servings / "fillets (3 fillets per serving)").
+
+---
+
 ## [1.4.5] — 2026-05-15
 
 ### Fixed

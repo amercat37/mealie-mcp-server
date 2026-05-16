@@ -46,8 +46,9 @@ class RecipeCreate(BaseModel):
     prepTime: Optional[str] = None  # plain text e.g. "30 minutes", "1 hour"
     performTime: Optional[str] = None  # active cook time, plain text
     totalTime: Optional[str] = None  # plain text e.g. "1 hour 30 minutes"
-    recipeYield: Optional[str] = None  # yield text e.g. "cups (1 cup per serving)", "burgers (1 burger per serving)"
-    recipeServings: Optional[int] = None
+    recipeServings: Optional[int] = None  # number of servings (people)
+    recipeYieldQuantity: Optional[int] = None  # total output e.g. 6 fillets, 2 cups
+    recipeYield: Optional[str] = None  # unit + per-serving text e.g. "fillets (3 fillets per serving)", "cups (1/2 cup per serving)"
     orgURL: Optional[str] = None  # source URL if recipe came from somewhere
     nutrition: Optional[RecipeNutritionCreate] = None
     notes: Optional[List[Dict[str, str]]] = None  # [{"title": "...", "text": "..."}]

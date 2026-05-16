@@ -275,10 +275,10 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
            do not invent unit names, as unknown units will be silently dropped.
         4. Always include "my-recipes" in tags (default). Use "the-autoimmune-solution"
            instead if the recipe belongs to that cookbook.
-        5. Yield: set all three fields together — recipeServings (int, e.g. 6),
-           recipeYieldQuantity (same int), and recipeYield (text describing what one
-           serving is, e.g. "burgers (1 burger per serving)", "cups (1 cup per serving)",
-           "bowls (1 bowl per serving)").
+        5. Yield: three independent fields — recipeServings (number of people served),
+           recipeYieldQuantity (total output quantity, e.g. 6 for 6 fillets or 2 for 2 cups),
+           and recipeYield (unit + per-serving breakdown, e.g. "fillets (3 fillets per serving)",
+           "cups (1/2 cup per serving)"). Nutrition values are per serving.
         6. Time: use plain human-readable strings — e.g. "30 minutes", "1 hour",
            "1 hour 30 minutes". Never use ISO 8601 format.
         7. Nutrition: always populate every nutrition field (calories, carbohydrateContent,
@@ -369,10 +369,12 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 patch_data["performTime"] = recipe.performTime
             if recipe.totalTime:
                 patch_data["totalTime"] = recipe.totalTime
-            if recipe.recipeYield:
-                patch_data["recipeYield"] = recipe.recipeYield
             if recipe.recipeServings:
                 patch_data["recipeServings"] = recipe.recipeServings
+            if recipe.recipeYieldQuantity:
+                patch_data["recipeYieldQuantity"] = recipe.recipeYieldQuantity
+            if recipe.recipeYield:
+                patch_data["recipeYield"] = recipe.recipeYield
             if recipe.orgURL:
                 patch_data["orgURL"] = recipe.orgURL
             if recipe.nutrition:
