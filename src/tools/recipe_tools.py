@@ -275,13 +275,24 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
            do not invent unit names, as unknown units will be silently dropped.
         4. Always include "my-recipes" in tags (default). Use "the-autoimmune-solution"
            instead if the recipe belongs to that cookbook.
+        5. Yield: set all three fields together — recipeServings (int, e.g. 6),
+           recipeYieldQuantity (same int), and recipeYield (text describing what one
+           serving is, e.g. "burgers (1 burger per serving)", "cups (1 cup per serving)",
+           "bowls (1 bowl per serving)").
+        6. Time: use plain human-readable strings — e.g. "30 minutes", "1 hour",
+           "1 hour 30 minutes". Never use ISO 8601 format.
+        7. Nutrition: always populate every nutrition field (calories, carbohydrateContent,
+           cholesterolContent, fatContent, fiberContent, proteinContent, saturatedFatContent,
+           sodiumContent, sugarContent, transFatContent, unsaturatedFatContent). Estimate
+           from standard sources if exact values are unknown. All values are strings.
 
         The tool resolves all slug and name references to IDs automatically before saving.
+        When nutrition data is provided, showNutrition is enabled automatically.
 
         Args:
             recipe: RecipeCreate object with name, description, categories (slugs),
                 tags (slugs), tools (slugs), ingredients (food/unit names), instructions,
-                timing, servings, source URL, nutrition, and notes.
+                timing, servings, yield, source URL, nutrition, and notes.
 
         Returns:
             Dict[str, Any]: The fully created recipe as returned by Mealie
@@ -366,6 +377,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 patch_data["orgURL"] = recipe.orgURL
             if recipe.nutrition:
                 patch_data["nutrition"] = recipe.nutrition.model_dump(exclude_none=True)
+                patch_data["settings"] = {"showNutrition": True}
             if recipe.notes:
                 patch_data["notes"] = recipe.notes
 

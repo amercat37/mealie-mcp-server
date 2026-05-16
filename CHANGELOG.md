@@ -4,6 +4,20 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.4.4] — 2026-05-15
+
+### Fixed
+
+- `src/tools/recipe_tools.py` (`create_recipe`) — `settings.showNutrition` is now set to `true` in the PATCH whenever nutrition data is provided. Previously the nutrition section was always hidden in the Mealie UI regardless of whether values were present.
+- `src/models/recipe.py` — `prepTime`, `performTime`, and `totalTime` comments corrected from ISO 8601 (`"PT30M"`) to plain text (`"30 minutes"`, `"1 hour"`), matching what Mealie actually accepts and displays.
+- `src/models/recipe.py` — `recipeYield` comment updated to reflect the three-field pattern: `recipeServings` (int) + `recipeYieldQuantity` (int) + `recipeYield` text (e.g. `"burgers (1 burger per serving)"`).
+
+### Changed
+
+- `create_recipe` docstring — added step-by-step instructions for yield (all three fields), time format (plain text), and nutrition (all eleven fields required, estimate if unknown).
+
+---
+
 ## [1.4.3] — 2026-05-15
 
 ### Fixed

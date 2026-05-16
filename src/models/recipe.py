@@ -43,10 +43,10 @@ class RecipeCreate(BaseModel):
     tools: List[str] = Field(default_factory=list)  # tool slugs
     recipeIngredient: List[RecipeIngredientCreate] = Field(default_factory=list)
     recipeInstructions: List[RecipeInstructionCreate] = Field(default_factory=list)
-    prepTime: Optional[str] = None  # ISO 8601 e.g. "PT30M"
-    performTime: Optional[str] = None  # active cook time
-    totalTime: Optional[str] = None
-    recipeYield: Optional[str] = None  # e.g. "4 servings"
+    prepTime: Optional[str] = None  # plain text e.g. "30 minutes", "1 hour"
+    performTime: Optional[str] = None  # active cook time, plain text
+    totalTime: Optional[str] = None  # plain text e.g. "1 hour 30 minutes"
+    recipeYield: Optional[str] = None  # yield text e.g. "cups (1 cup per serving)", "burgers (1 burger per serving)"
     recipeServings: Optional[int] = None
     orgURL: Optional[str] = None  # source URL if recipe came from somewhere
     nutrition: Optional[RecipeNutritionCreate] = None
