@@ -108,7 +108,7 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     section("Pre-test cleanup — remove stale test artifacts")
     # -----------------------------------------------------------------------
-    for slug in ["test-recipe-copy", "test-recipe"]:
+    for slug in ["test-recipe-copy", "test-recipe", "test-recipe-auto-food"]:
         try:
             _mealie.delete_recipe(slug)
             print(f"  [cleanup] deleted stale recipe: {slug}")
@@ -179,6 +179,35 @@ async def run(session: ClientSession) -> None:
         state["recipe_slug"] = "test-recipe"
 
     slug = state["recipe_slug"]
+
+    # Verify create_recipe auto-creates foods not in the catalog
+    try:
+        r = await session.call_tool("create_recipe", {
+            "recipe": {
+                "name": "__test_recipe_auto_food__",
+                "description": "Auto-food creation test — safe to delete",
+                "tags": [],
+                "recipeCategory": [],
+                "tools": [],
+                "recipeIngredient": [
+                    {"food": "__test_auto_food__", "quantity": 1.0, "disableAmount": False}
+                ],
+                "recipeInstructions": [{"text": "Test step"}],
+                "recipeYield": "1 serving",
+            }
+        })
+        text = r.content[0].text if r.content else ""
+        check("create_recipe auto-creates unknown food", not r.isError and len(text) > 10, text[:80])
+        if not r.isError:
+            state["auto_food_recipe_slug"] = "test-recipe-auto-food"
+        # Verify the food was created in the catalog
+        foods = _mealie.get_foods(search="__test_auto_food__", per_page=10)
+        auto_food = next((f for f in foods.get("items", []) if f.get("name") == "__test_auto_food__"), None)
+        check("auto-created food exists in catalog", auto_food is not None)
+        if auto_food:
+            state["auto_food_id"] = auto_food["id"]
+    except Exception as e:
+        check("create_recipe auto-creates unknown food", False, str(e))
 
     try:
         r = await session.call_tool("get_recipe_detailed", {"slug": slug})
@@ -563,7 +592,7 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     section("Cleanup — test recipes and foods")
     # -----------------------------------------------------------------------
-    for slug in [state.get("recipe_copy_slug", "test-recipe-copy"), state.get("recipe_slug", "test-recipe")]:
+    for slug in [state.get("recipe_copy_slug", "test-recipe-copy"), state.get("recipe_slug", "test-recipe"), state.get("auto_food_recipe_slug")]:
         if slug:
             try:
                 r = _mealie.delete_recipe(slug)
@@ -577,6 +606,13 @@ async def run(session: ClientSession) -> None:
             check(f"cleanup delete_food (food_a)", isinstance(r, dict))
         except Exception as e:
             check(f"cleanup delete_food (food_a)", False, str(e))
+
+    if state.get("auto_food_id"):
+        try:
+            r = _mealie.delete_food(state["auto_food_id"])
+            check(f"cleanup delete_food (__test_auto_food__)", isinstance(r, dict))
+        except Exception as e:
+            check(f"cleanup delete_food (__test_auto_food__)", False, str(e))
 
     # -----------------------------------------------------------------------
     section("Summary")

@@ -22,6 +22,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env.testing"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mealie import MealieFetcher
+from mealie.client import MealieApiError
 
 log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
 logging.basicConfig(
@@ -109,6 +110,20 @@ def run(mealie: MealieFetcher) -> None:
             check("create_recipe PATCH (full data)", isinstance(r, dict))
         except Exception as e:
             check("create_recipe PATCH (full data)", False, str(e))
+
+        try:
+            # Mealie requires food.id on PATCH — a name-only food object must 500
+            bad_patch = {
+                "recipeIngredient": [
+                    {"quantity": 1.0, "disableAmount": False, "food": {"name": "__test_nameless_food__"}}
+                ]
+            }
+            mealie.patch_recipe(slug, bad_patch)
+            check("patch_recipe rejects name-only food (no id)", False, "expected 500 but got success")
+        except MealieApiError as e:
+            check("patch_recipe rejects name-only food (no id)", e.status_code == 500, str(e)[:80])
+        except Exception as e:
+            check("patch_recipe rejects name-only food (no id)", False, str(e))
 
         try:
             r = mealie.get_recipe(slug)
