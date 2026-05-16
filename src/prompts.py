@@ -390,19 +390,23 @@ Ask the user for all required details conversationally. Collect:
 - Required cooking tools (match existing patterns)
 - Ingredients — for each: quantity, unit, food name, and any note
 - Instructions — numbered steps; use section headers if needed
-- Prep time, cook time, total time (use ISO 8601: "PT30M", "PT1H")
-- Servings and yield (e.g., "4 servings")
+- Prep time, cook time, total time — plain text (e.g. "30 minutes", "1 hour", "1 hour 30 minutes")
+- Servings and yield — three fields: number of servings (e.g. 6), yield quantity (same number),
+  and yield text describing what one serving is (e.g. "burgers (1 burger per serving)",
+  "cups (1 cup per serving)", "bowls (1 bowl per serving)")
 - Source URL if applicable
-- Nutrition (optional — only if user has this data)
+- Nutrition — required; estimate from standard sources if the user doesn't have exact values.
+  All eleven fields must be populated: calories, carbohydrate, cholesterol, fat, fiber, protein,
+  saturated fat, sodium, sugar, trans fat, unsaturated fat. Values are strings (e.g. "250").
 - Notes (optional tips, variations, storage instructions)
 
 ## Step 3 — Resolve ingredients
 For each ingredient, search get_foods by name before using it.
 - If an exact or very close match exists, use that food name exactly as it appears in the library.
-- If no match exists, the food must be created before saving the recipe:
-  1. Call get_labels to find the appropriate shopping list label (e.g. "Vegetables & Greens", "Meats", "Dairy & Eggs")
-  2. Call create_food with the food name and the matching label_id so it appears in the right aisle
-  3. Use the returned food in the ingredient list
+- If no match exists, use the new food name as-is — create_recipe will auto-create it.
+  However, if you want the food to have a shopping list label (aisle), create it manually first:
+  1. Call get_labels to find the appropriate label (e.g. "Vegetables & Greens", "Meats", "Dairy & Eggs")
+  2. Call create_food with the food name and the matching label_id
 - Do not silently invent food names that differ from what's in the library.
 
 ## Step 4 — Present preview
