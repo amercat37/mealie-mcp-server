@@ -266,10 +266,14 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         Before calling this tool:
         1. Fetch 2-3 existing similar recipes with get_recipe_detailed to observe the
            category/tag/tool patterns used — follow those patterns, don't invent new ones.
-        2. Search existing foods with get_foods before listing any ingredient — reuse
-           existing food names exactly. Only specify a food name that doesn't exist if
-           truly necessary; a separate create_food call will add it.
-        3. Always include "my-recipes" in tags (default). Use "the-autoimmune-solution"
+        2. For every ingredient food, search the catalog with get_foods first. Pick the
+           existing food that best covers the ingredient (e.g. "black pepper" covers
+           "pepper"). Only use a name that isn't in the catalog if the food is truly
+           absent — the tool will create it automatically.
+        3. For every ingredient unit, call get_units first and pick the best match
+           (e.g. "c" or "cup" → use the existing "cup" unit). If no unit fits, omit it —
+           do not invent unit names, as unknown units will be silently dropped.
+        4. Always include "my-recipes" in tags (default). Use "the-autoimmune-solution"
            instead if the recipe belongs to that cookbook.
 
         The tool resolves all slug and name references to IDs automatically before saving.
@@ -322,16 +326,17 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 resolved["disableAmount"] = ing.disableAmount
                 if ing.food:
                     food_obj = food_lookup.get(ing.food.lower())
-                    if food_obj:
-                        resolved["food"] = food_obj
-                    else:
-                        resolved["food"] = {"name": ing.food}
+                    if not food_obj:
+                        created = mealie.create_food(ing.food)
+                        food_lookup[ing.food.lower()] = created
+                        food_obj = created
+                        logger.info({"message": "Auto-created food", "name": ing.food})
+                    resolved["food"] = food_obj
                 if ing.unit:
                     unit_obj = unit_lookup.get(ing.unit.lower())
                     if unit_obj:
                         resolved["unit"] = unit_obj
-                    else:
-                        resolved["unit"] = {"name": ing.unit}
+                    # Unknown units are dropped — Mealie requires a unit id on PATCH
                 resolved_ingredients.append(resolved)
 
             # Step 4: Build patch payload
