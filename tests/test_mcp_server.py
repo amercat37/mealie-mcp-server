@@ -152,6 +152,25 @@ async def run(session: ClientSession) -> None:
         check("get_recipes", False, str(e))
 
     # -----------------------------------------------------------------------
+    section("Pre-flight — fetch organizer slugs for recipe creation test")
+    # -----------------------------------------------------------------------
+    import re as _re
+    for _fetch_tool, _key, _args in [
+        ("get_categories",    "pre_category_slug", {"per_page": 5}),
+        ("get_tags",          "pre_tag_slug",       {"per_page": 5}),
+        ("get_cooking_tools", "pre_tool_slug",       {}),
+    ]:
+        try:
+            _r = await session.call_tool(_fetch_tool, _args)
+            _text = _r.content[0].text if _r.content else ""
+            _slugs = _re.findall(r'"slug":\s*"([^"]+)"', _text)
+            if _slugs:
+                state[_key] = _slugs[0]
+                print(f"  [info] {_key} = {_slugs[0]}")
+        except Exception:
+            pass
+
+    # -----------------------------------------------------------------------
     section("Recipes — create and inspect")
     # -----------------------------------------------------------------------
     try:
@@ -159,9 +178,9 @@ async def run(session: ClientSession) -> None:
             "recipe": {
                 "name": "__test_recipe__",
                 "description": "Automated test recipe — safe to delete",
-                "tags": [],
-                "recipeCategory": [],
-                "tools": [],
+                "tags": [state["pre_tag_slug"]] if state.get("pre_tag_slug") else [],
+                "recipeCategory": [state["pre_category_slug"]] if state.get("pre_category_slug") else [],
+                "tools": [state["pre_tool_slug"]] if state.get("pre_tool_slug") else [],
                 "recipeIngredient": [],
                 "recipeInstructions": [{"text": "Test step 1"}, {"text": "Test step 2"}],
                 "recipeYield": "servings (1 serving per serving)",
@@ -230,6 +249,14 @@ async def run(session: ClientSession) -> None:
         check("get_recipe_concise", False, str(e))
         check("get_recipe_concise includes totalTime", False, str(e))
 
+    check(
+        "get_recipe_concise exercised recipeCategory/tags/tools (organizers populated)",
+        bool(state.get("pre_category_slug") or state.get("pre_tag_slug") or state.get("pre_tool_slug")),
+        "no organizers found in instance — List[Any] validation not exercised" if not (
+            state.get("pre_category_slug") or state.get("pre_tag_slug") or state.get("pre_tool_slug")
+        ) else "",
+    )
+
     try:
         r = await session.call_tool("duplicate_recipe", {"slug": slug, "name": "__test_recipe_copy__"})
         text = r.content[0].text if r.content else ""
@@ -285,15 +312,21 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     section("Categories")
     # -----------------------------------------------------------------------
-    for tool, args in [
-        ("get_categories", {"per_page": 5}),
-        ("get_empty_categories", {}),
-    ]:
-        try:
-            r = await session.call_tool(tool, args)
-            check(tool, r.content is not None)
-        except Exception as e:
-            check(tool, False, str(e))
+    try:
+        r = await session.call_tool("get_categories", {"per_page": 5})
+        check("get_categories", r.content is not None)
+    except Exception as e:
+        check("get_categories", False, str(e))
+
+    try:
+        r = await session.call_tool("get_empty_categories", {})
+        check("get_empty_categories", r.content is not None)
+        # FastMCP creates one TextContent item per list element, so isError=False means
+        # the List[Dict] annotation matched — catches regression if annotation reverts to Dict
+        check("get_empty_categories returns list", not r.isError, r.content[0].text[:60] if r.isError and r.content else "")
+    except Exception as e:
+        check("get_empty_categories", False, str(e))
+        check("get_empty_categories returns list", False, str(e))
 
     try:
         r = await session.call_tool("get_categories", {"per_page": 5})
@@ -326,15 +359,19 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     section("Tags")
     # -----------------------------------------------------------------------
-    for tool, args in [
-        ("get_tags", {"per_page": 5}),
-        ("get_empty_tags", {}),
-    ]:
-        try:
-            r = await session.call_tool(tool, args)
-            check(tool, r.content is not None)
-        except Exception as e:
-            check(tool, False, str(e))
+    try:
+        r = await session.call_tool("get_tags", {"per_page": 5})
+        check("get_tags", r.content is not None)
+    except Exception as e:
+        check("get_tags", False, str(e))
+
+    try:
+        r = await session.call_tool("get_empty_tags", {})
+        check("get_empty_tags", r.content is not None)
+        check("get_empty_tags returns list", not r.isError, r.content[0].text[:60] if r.isError and r.content else "")
+    except Exception as e:
+        check("get_empty_tags", False, str(e))
+        check("get_empty_tags returns list", False, str(e))
 
     try:
         r = await session.call_tool("get_tags", {"per_page": 5})

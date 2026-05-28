@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from utils import format_api_params
 
@@ -51,7 +51,7 @@ class CategoriesMixin:
         logger.info({"message": "Retrieving categories", "parameters": params})
         return self._handle_request("GET", "/api/organizers/categories", params=params)
 
-    def get_empty_categories(self) -> Dict[str, Any]:
+    def get_empty_categories(self) -> List[Dict[str, Any]]:
         """Get categories that have no recipes assigned.
 
         Returns:

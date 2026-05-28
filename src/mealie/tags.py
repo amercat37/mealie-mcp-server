@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from utils import format_api_params
 
@@ -51,7 +51,7 @@ class TagsMixin:
         logger.info({"message": "Retrieving tags", "parameters": params})
         return self._handle_request("GET", "/api/organizers/tags", params=params)
 
-    def get_empty_tags(self) -> Dict[str, Any]:
+    def get_empty_tags(self) -> List[Dict[str, Any]]:
         """Get tags that have no recipes assigned.
 
         Returns:
