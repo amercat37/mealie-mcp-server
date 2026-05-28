@@ -44,11 +44,15 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             category_id: The UUID of the category
 
         Returns:
-            Dict[str, Any]: The category details including associated recipes
+            Dict[str, Any]: The category details with a recipes list of slugs. Use
+            get_recipe_detailed to fetch full details for any slug.
         """
         try:
             logger.info({"message": "Fetching category", "category_id": category_id})
-            return mealie.get_category(category_id)
+            result = mealie.get_category(category_id)
+            if "recipes" in result:
+                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
+            return result
         except Exception as e:
             error_msg = f"Error fetching category '{category_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -63,11 +67,15 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             category_slug: The slug of the category (e.g., "breakfast", "desserts")
 
         Returns:
-            Dict[str, Any]: The category details including associated recipes
+            Dict[str, Any]: The category details with a recipes list of slugs. Use
+            get_recipe_detailed to fetch full details for any slug.
         """
         try:
             logger.info({"message": "Fetching category by slug", "category_slug": category_slug})
-            return mealie.get_category_by_slug(category_slug)
+            result = mealie.get_category_by_slug(category_slug)
+            if "recipes" in result:
+                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
+            return result
         except Exception as e:
             error_msg = f"Error fetching category by slug '{category_slug}': {str(e)}"
             logger.error({"message": error_msg})

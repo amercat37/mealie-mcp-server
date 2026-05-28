@@ -16,6 +16,10 @@ For each tool call:
 - If it fails: say FAIL, the tool name, the full error message, and the raw JSON response
 
 Tools to call:
+- get_shopping_lists
+- get_tags
+- get_tag
+- get_tag_by_slug
 - get_recipes
 - get_recipe_detailed
 - get_recipe_concise
@@ -27,13 +31,9 @@ Tools to call:
 - get_category
 - get_category_by_slug
 - get_empty_categories
-- get_tags
-- get_tag
-- get_tag_by_slug
 - get_empty_tags
 - get_foods
 - get_food
-- get_shopping_lists
 - get_shopping_list
 - get_shopping_list_items
 - get_shopping_list_item

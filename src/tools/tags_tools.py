@@ -44,11 +44,15 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             tag_id: The UUID of the tag
 
         Returns:
-            Dict[str, Any]: The tag details including associated recipes
+            Dict[str, Any]: The tag details with a recipes list of slugs. Use
+            get_recipe_detailed to fetch full details for any slug.
         """
         try:
             logger.info({"message": "Fetching tag", "tag_id": tag_id})
-            return mealie.get_tag(tag_id)
+            result = mealie.get_tag(tag_id)
+            if "recipes" in result:
+                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
+            return result
         except Exception as e:
             error_msg = f"Error fetching tag '{tag_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -63,11 +67,15 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             tag_slug: The slug of the tag (e.g., "quick", "healthy")
 
         Returns:
-            Dict[str, Any]: The tag details including associated recipes
+            Dict[str, Any]: The tag details with a recipes list of slugs. Use
+            get_recipe_detailed to fetch full details for any slug.
         """
         try:
             logger.info({"message": "Fetching tag by slug", "tag_slug": tag_slug})
-            return mealie.get_tag_by_slug(tag_slug)
+            result = mealie.get_tag_by_slug(tag_slug)
+            if "recipes" in result:
+                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
+            return result
         except Exception as e:
             error_msg = f"Error fetching tag by slug '{tag_slug}': {str(e)}"
             logger.error({"message": error_msg})

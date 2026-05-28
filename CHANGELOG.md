@@ -4,6 +4,19 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.11] — 2026-05-28
+
+### Fixed
+
+- `src/tools/tags_tools.py` — `get_tag` and `get_tag_by_slug` now trim the embedded `recipes` array from full recipe objects down to a list of slugs before returning. Mealie embeds every full recipe in the tag response; for a tag like `my-recipes` this was 39 full objects, producing a payload large enough to trigger OpenAI's safety filter and block the tool call.
+- `src/tools/categories_tools.py` — `get_category` and `get_category_by_slug` receive the same fix for the same reason.
+
+### Changed
+
+- `tests/LLM_PROMPT.md` — `get_shopping_lists`, `get_tags`, `get_tag`, and `get_tag_by_slug` moved to the top of the tool list so they are called early in the session before conversation context accumulates, reducing false-positive safety filter triggers.
+
+---
+
 ## [1.0.10] — 2026-05-28
 
 ### Fixed
