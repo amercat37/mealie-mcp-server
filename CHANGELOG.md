@@ -4,6 +4,18 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.8] — 2026-05-28
+
+### Fixed
+
+- `src/models/recipe.py` — `totalTime`, `prepTime`, `cookTime`, and `performTime` corrected from `Optional[int]` to `Optional[str]` in the `Recipe` read model. Mealie returns these as plain text strings (e.g. `"40 minutes"`); the wrong type caused `get_recipe_concise` to throw a Pydantic validation error on any recipe with time fields set.
+
+### Tests
+
+- `tests/test_mcp_server.py` — test recipe now includes `prepTime`, `performTime`, `totalTime`, `recipeServings`, and `recipeYieldQuantity`; added `get_recipe_concise includes totalTime` assertion to catch this class of regression.
+
+---
+
 ## [1.0.7] — 2026-05-28
 
 ### Fixed

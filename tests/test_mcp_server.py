@@ -164,7 +164,12 @@ async def run(session: ClientSession) -> None:
                 "tools": [],
                 "recipeIngredient": [],
                 "recipeInstructions": [{"text": "Test step 1"}, {"text": "Test step 2"}],
-                "recipeYield": "1 serving",
+                "recipeYield": "servings (1 serving per serving)",
+                "recipeServings": 2,
+                "recipeYieldQuantity": 2,
+                "prepTime": "10 minutes",
+                "performTime": "20 minutes",
+                "totalTime": "30 minutes",
             }
         })
         text = r.content[0].text if r.content else ""
@@ -220,8 +225,10 @@ async def run(session: ClientSession) -> None:
         r = await session.call_tool("get_recipe_concise", {"slug": slug})
         text = r.content[0].text if r.content else ""
         check("get_recipe_concise", len(text) > 5)
+        check("get_recipe_concise includes totalTime", "totalTime" in text, text[:80])
     except Exception as e:
         check("get_recipe_concise", False, str(e))
+        check("get_recipe_concise includes totalTime", False, str(e))
 
     try:
         r = await session.call_tool("duplicate_recipe", {"slug": slug, "name": "__test_recipe_copy__"})
