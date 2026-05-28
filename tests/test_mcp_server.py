@@ -344,17 +344,28 @@ async def run(session: ClientSession) -> None:
 
     if state.get("category_id"):
         try:
+            import json as _json
             r = await session.call_tool("get_category", {"category_id": state["category_id"]})
             check("get_category", r.content is not None)
+            _data = _json.loads(r.content[0].text) if r.content else {}
+            _recipes = _data.get("recipes", [])
+            check("get_category recipes are slugs", not _recipes or isinstance(_recipes[0], str),
+                  str(_recipes[0])[:60] if _recipes else "empty")
         except Exception as e:
             check("get_category", False, str(e))
+            check("get_category recipes are slugs", False, str(e))
 
     if state.get("category_slug"):
         try:
             r = await session.call_tool("get_category_by_slug", {"category_slug": state["category_slug"]})
             check("get_category_by_slug", r.content is not None)
+            _data = _json.loads(r.content[0].text) if r.content else {}
+            _recipes = _data.get("recipes", [])
+            check("get_category_by_slug recipes are slugs", not _recipes or isinstance(_recipes[0], str),
+                  str(_recipes[0])[:60] if _recipes else "empty")
         except Exception as e:
             check("get_category_by_slug", False, str(e))
+            check("get_category_by_slug recipes are slugs", False, str(e))
 
     # -----------------------------------------------------------------------
     section("Tags")
@@ -390,15 +401,25 @@ async def run(session: ClientSession) -> None:
         try:
             r = await session.call_tool("get_tag", {"tag_id": state["tag_id"]})
             check("get_tag", r.content is not None)
+            _data = _json.loads(r.content[0].text) if r.content else {}
+            _recipes = _data.get("recipes", [])
+            check("get_tag recipes are slugs", not _recipes or isinstance(_recipes[0], str),
+                  str(_recipes[0])[:60] if _recipes else "empty")
         except Exception as e:
             check("get_tag", False, str(e))
+            check("get_tag recipes are slugs", False, str(e))
 
     if state.get("tag_slug"):
         try:
             r = await session.call_tool("get_tag_by_slug", {"tag_slug": state["tag_slug"]})
             check("get_tag_by_slug", r.content is not None)
+            _data = _json.loads(r.content[0].text) if r.content else {}
+            _recipes = _data.get("recipes", [])
+            check("get_tag_by_slug recipes are slugs", not _recipes or isinstance(_recipes[0], str),
+                  str(_recipes[0])[:60] if _recipes else "empty")
         except Exception as e:
             check("get_tag_by_slug", False, str(e))
+            check("get_tag_by_slug recipes are slugs", False, str(e))
 
     # -----------------------------------------------------------------------
     section("Foods")

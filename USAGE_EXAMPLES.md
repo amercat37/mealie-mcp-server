@@ -570,7 +570,7 @@ Returns all recipe categories with pagination.
 
 ### get_category — GET /api/organizers/categories/{id}
 
-Returns a specific category and its associated recipes by ID.
+Returns a specific category by ID. The recipes field contains slugs — use get_recipe_detailed for full details.
 
 ```
 "Show me the breakfast category"

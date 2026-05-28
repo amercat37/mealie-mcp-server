@@ -4,6 +4,18 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.12] — 2026-05-28
+
+### Changed
+
+- `USAGE_EXAMPLES.md` — `get_category`, `get_category_by_slug`, `get_tag`, `get_tag_by_slug` descriptions updated to state the `recipes` field contains slugs, not full recipe objects.
+
+### Tests
+
+- `tests/test_mcp_server.py` — `get_category`, `get_category_by_slug`, `get_tag`, `get_tag_by_slug` each assert that the `recipes` field in the response contains strings (slugs), not dicts — catches regression if the trimming is removed.
+
+---
+
 ## [1.0.11] — 2026-05-28
 
 ### Fixed
