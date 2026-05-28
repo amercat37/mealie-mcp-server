@@ -4,6 +4,14 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.9] — 2026-05-28
+
+### Added
+
+- `tests/LLM_PROMPT.md` — pasteable prompt for manual LLM integration testing. Instructs Claude or ChatGPT to call all read-only MCP tools in order, report PASS/FAIL per tool with full error and raw JSON on failure, and print a summary.
+
+---
+
 ## [1.0.8] — 2026-05-28
 
 ### Fixed
