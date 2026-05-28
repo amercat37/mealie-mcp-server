@@ -1,6 +1,6 @@
 import logging
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -75,12 +75,12 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
-    def get_empty_categories() -> Dict[str, Any]:
+    def get_empty_categories() -> List[Dict[str, Any]]:
         """List categories that have no recipes assigned. Use this to find and
         clean up stale or unused category entries.
 
         Returns:
-            Dict[str, Any]: Categories with no associated recipes
+            List[Dict[str, Any]]: Categories with no associated recipes
         """
         try:
             logger.info({"message": "Fetching empty categories"})

@@ -153,9 +153,9 @@ class Recipe(BaseModel):
     cookTime: Optional[str] = None
     performTime: Optional[str] = None
     description: Optional[str] = None
-    recipeCategory: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    tools: List[str] = Field(default_factory=list)
+    recipeCategory: List[Any] = Field(default_factory=list)
+    tags: List[Any] = Field(default_factory=list)
+    tools: List[Any] = Field(default_factory=list)
     rating: Optional[float] = None
     orgURL: Optional[str] = None
     dateAdded: str

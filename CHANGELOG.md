@@ -4,6 +4,16 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.10] — 2026-05-28
+
+### Fixed
+
+- `src/models/recipe.py` — `recipeCategory`, `tags`, and `tools` in the `Recipe` read model changed from `List[str]` to `List[Any]`. Mealie returns these as full objects (id/name/slug dicts), not plain strings; the wrong type caused `get_recipe_concise` to throw a Pydantic validation error on any recipe with categories, tags, or tools assigned.
+- `src/tools/categories_tools.py` — `get_empty_categories()` return type corrected from `Dict[str, Any]` to `List[Dict[str, Any]]`. Mealie returns a list; the wrong annotation caused MCP to serialize the response incorrectly.
+- `src/tools/tags_tools.py` — `get_empty_tags()` return type corrected from `Dict[str, Any]` to `List[Dict[str, Any]]`. Same issue as `get_empty_categories`.
+
+---
+
 ## [1.0.9] — 2026-05-28
 
 ### Added
