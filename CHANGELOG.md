@@ -11,6 +11,12 @@ All notable changes to this project will be documented here.
 - `src/models/recipe.py` — `recipeCategory`, `tags`, and `tools` in the `Recipe` read model changed from `List[str]` to `List[Any]`. Mealie returns these as full objects (id/name/slug dicts), not plain strings; the wrong type caused `get_recipe_concise` to throw a Pydantic validation error on any recipe with categories, tags, or tools assigned.
 - `src/tools/categories_tools.py` — `get_empty_categories()` return type corrected from `Dict[str, Any]` to `List[Dict[str, Any]]`. Mealie returns a list; the wrong annotation caused MCP to serialize the response incorrectly.
 - `src/tools/tags_tools.py` — `get_empty_tags()` return type corrected from `Dict[str, Any]` to `List[Dict[str, Any]]`. Same issue as `get_empty_categories`.
+- `src/mealie/categories.py` and `src/mealie/tags.py` — `get_empty_categories()` and `get_empty_tags()` fetcher-level return annotations corrected from `Dict[str, Any]` to `List[Dict[str, Any]]` to match the actual API response.
+
+### Tests
+
+- `tests/test_mcp_server.py` — pre-flight section now fetches a real category slug, tag slug, and tool slug and assigns them to the test recipe before calling `get_recipe_concise`. This exercises the `recipeCategory`/`tags`/`tools` fields with actual objects so the `List[Any]` validation is always exercised, not vacuously passed via empty lists.
+- `tests/test_mcp_server.py` — `get_empty_categories` and `get_empty_tags` each get an explicit `isError` assertion to catch regression if the `List[Dict]` annotation reverts to `Dict`.
 
 ---
 
