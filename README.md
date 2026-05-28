@@ -99,6 +99,9 @@ In the Authentik admin UI go to **Applications → Providers → Create → OAut
 | Client type | `Confidential` |
 | Redirect URIs | Your MCP client's callback URL (see your client's OAuth setup docs) |
 | Signing Key | Select any existing certificate, or create one under **System → Certificates** |
+| Access Token Validity | `hours=12` (Authentik's default of `minutes=5` causes frequent reconnection prompts in MCP clients) |
+| Refresh Token Validity | `days=30` |
+| Scopes | `email`, `profile`, `openid`, `offline_access` (include `offline_access` for refresh token support) |
 
 Callback URI examples:
 ```
