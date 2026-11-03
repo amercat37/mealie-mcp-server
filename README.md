@@ -40,7 +40,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 ### 📅 Meal Planning
 - **View & Create**: See all meal plans, today's menu, and add new entries
 - **Edit & Delete**: Update or remove individual meal plan entries
-- **Bulk Creation**: Add multiple meals at once
+- **Bulk Creation**: Add multiple meals at once — all entries are checked first, and the created ids come back
 - **Whole-Week Entries**: Plan a meal for "sometime this week" (Mealie v3.30+), aligned to the household's first day of week
 
 ### 💬 Prompts

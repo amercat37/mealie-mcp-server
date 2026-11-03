@@ -7,6 +7,8 @@ No live infrastructure — exercises logic against stand-in objects:
 - the recipe read tools when the household lastMade lookup fails
 - shopping list tools trimming recipeReferences
 - reordering a shopping list's sections by label name
+- create_mealplan / create_mealplan_bulk: trimmed entries, checks before creating,
+  partial-failure report
 
 Usage:
     cd mealie-mcp-server
@@ -24,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mcp.server.fastmcp import FastMCP
 
 from mealie.mealplan import MealplanMixin
+from tools.mealplan_tools import register_mealplan_tools
 from tools.recipe_tools import register_recipe_tools
 from tools.shopping_list_tools import register_shopping_list_tools
 
@@ -137,6 +140,30 @@ class FakeLabels:
         by_id = {st["id"]: st for st in self.settings}
         self.settings = [{**by_id[p["id"]], "position": p["position"]} for p in payload]
         return self.get_shopping_list(list_id)
+
+
+class FakeMealplanCreate:
+    """Creates entries like Mealie (with the embedded recipe); fails on title "boom"."""
+
+    def __init__(self):
+        self.created = []
+
+    def create_mealplan(self, date, recipe_id=None, title=None, entry_type="breakfast", whole_week=False):
+        if title == "boom":
+            raise ConnectionError("Mealie unavailable")
+        entry = {"id": len(self.created) + 1, "date": date, "endDate": None, "entryType": entry_type,
+                 "title": title or "", "text": "", "recipeId": recipe_id, "groupId": "g", "userId": "u",
+                 "householdId": "h", "recipe": None}
+        if whole_week:
+            entry["endDate"] = "2099-03-07"
+        if recipe_id:
+            entry["recipe"] = {"id": recipe_id, "name": "Chili Sauce", "slug": "chili-sauce",
+                               "description": "long text", "tags": []}
+        self.created.append(entry)
+        return entry
+
+
+RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
 
 
 def call_error(srv: FastMCP, tool: str, args: dict) -> str:
@@ -258,6 +285,51 @@ def run() -> None:
     check("unknown name: nothing sent to Mealie", len(fake.puts) == puts)
     err = call_error(srv, "update_shopping_list_label_settings", {"list_id": "L1", "labels": []})
     check("empty list rejected without sending", bool(err) and len(fake.puts) == puts, err)
+
+    # ------------------------------------------------------------------
+    section("Meal plan create: trimmed entries, checks first, partial failures")
+    # ------------------------------------------------------------------
+    fake = FakeMealplanCreate()
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, fake)
+    out = call(srv, "create_mealplan", {"date": "2099-03-04", "recipe_id": RECIPE_UUID, "entry_type": "dinner"})
+    check("create_mealplan returns the trimmed entry with its id",
+          out == {"id": 1, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+                  "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}, str(out))
+    out = call(srv, "create_mealplan_bulk", {"entries": [
+        {"date": "2099-03-05", "title": "Leftovers", "entry_type": "lunch"},
+        {"date": "2099-03-04", "title": "Soup week", "entry_type": "dinner", "whole_week": True},
+    ]})
+    check("create_mealplan_bulk returns every created entry in order with ids",
+          out == {"created": [
+              {"id": 2, "date": "2099-03-05", "entryType": "lunch", "title": "Leftovers"},
+              {"id": 3, "date": "2099-03-04", "endDate": "2099-03-07", "entryType": "dinner", "title": "Soup week"},
+          ]}, str(out))
+
+    before = len(fake.created)
+    for name, entry, expect in [
+        ("bad entry_type", {"date": "2099-03-06", "title": "x", "entry_type": "brunch"}, "brunch"),
+        ("bad date", {"date": "03/06/2099", "title": "x"}, "YYYY-MM-DD"),
+        ("no recipe or title", {"date": "2099-03-06"}, "recipe_id or a title"),
+        ("recipe_id not a UUID", {"date": "2099-03-06", "recipe_id": "chili-sauce"}, "not a recipe UUID"),
+        ("unknown key", {"date": "2099-03-06", "title": "x", "entryType": "dinner"}, "entryType"),
+    ]:
+        err = call_error(srv, "create_mealplan_bulk", {"entries": [
+            {"date": "2099-03-06", "title": "fine"}, entry]})
+        check(f"bulk {name}: rejected, names entry 2, nothing created",
+              expect in err and "entry 2" in err and "nothing was created" in err
+              and len(fake.created) == before, err[-160:])
+    err = call_error(srv, "create_mealplan", {"date": "2099-03-06", "title": "x", "entry_type": "brunch"})
+    check("create_mealplan rejects a bad entry_type before creating",
+          "brunch" in err and len(fake.created) == before, err[-120:])
+
+    err = call_error(srv, "create_mealplan_bulk", {"entries": [
+        {"date": "2099-03-08", "title": "a"}, {"date": "2099-03-09", "title": "b"},
+        {"date": "2099-03-10", "title": "boom"}, {"date": "2099-03-11", "title": "d"},
+    ]})
+    check("bulk partial failure: reports created ids, the failed entry and what was not attempted",
+          f"Created 2 of 4 entries (ids {before + 1}, {before + 2})" in err
+          and "entry 3 (2099-03-10) failed" in err and "entry 4 was not attempted" in err, err[-260:])
 
     # ------------------------------------------------------------------
     section("Summary")

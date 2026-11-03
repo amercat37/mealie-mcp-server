@@ -85,7 +85,7 @@ class MealplanMixin:
             date: Date for the mealplan in ISO format (YYYY-MM-DD)
             recipe_id: UUID of the recipe to add to the mealplan (optional)
             title: Title for the mealplan entry if not using a recipe (optional)
-            entry_type: Type of mealplan entry (breakfast, lunch, dinner, etc.)
+            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side, snack, drink, dessert)
             whole_week: Plan it for the whole week containing `date` rather than that day
 
         Returns:
@@ -148,7 +148,7 @@ class MealplanMixin:
         Args:
             entry_id: Numeric id of the mealplan entry to update
             date: New date for the entry (YYYY-MM-DD)
-            entry_type: Type of entry (breakfast, lunch, dinner, side)
+            entry_type: Type of entry (breakfast, lunch, dinner, side, snack, drink, dessert)
             recipe_id: UUID of the recipe (optional)
             title: Title for non-recipe entries (optional)
             whole_week: True makes it a whole-week entry, False a single-day entry;

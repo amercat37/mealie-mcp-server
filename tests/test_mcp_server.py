@@ -813,8 +813,26 @@ async def run(session: ClientSession) -> None:
             "entries": [{"date": "2099-01-03", "entry_type": "lunch", "title": "__test_bulk_mealplan__"}]
         })
         check_tool("create_mealplan_bulk", r)
+        created = _json.loads(r.content[0].text).get("created", []) if not r.isError else []
+        check("create_mealplan_bulk returns the created entry with its id",
+              len(created) == 1 and isinstance(created[0].get("id"), int)
+              and created[0].get("title") == "__test_bulk_mealplan__" and "recipe" not in created[0],
+              str(created)[:160])
     except Exception as e:
         check("create_mealplan_bulk", False, str(e))
+
+    try:
+        r = await session.call_tool("create_mealplan_bulk", {"entries": [
+            {"date": "2099-01-04", "entry_type": "lunch", "title": "__test_bulk_rejected__"},
+            {"date": "2099-01-05", "entry_type": "brunch", "title": "__test_bulk_rejected__"},
+        ]})
+        leftover = [e for e in _mealie.get_mealplans(start_date="2099-01-01", end_date="2099-01-31", per_page=-1)
+                    .get("items", []) if e.get("title") == "__test_bulk_rejected__"]
+        check("create_mealplan_bulk with one bad entry creates nothing",
+              r.isError and "brunch" in error_text(r) and not leftover,
+              error_text(r)[:160] + (f" — created {len(leftover)}" if leftover else ""))
+    except Exception as e:
+        check("create_mealplan_bulk with one bad entry creates nothing", False, str(e))
 
     try:
         r = await session.call_tool("create_mealplan", {
@@ -822,6 +840,10 @@ async def run(session: ClientSession) -> None:
         })
         text = r.content[0].text if r.content else ""
         check("create_mealplan", not r.isError and "id" in text, error_text(r) if r.isError else "")
+        entry = _json.loads(text) if not r.isError else {}
+        check("create_mealplan returns the trimmed entry",
+              set(entry) == {"id", "date", "entryType", "title"} and entry.get("title") == "__test_mealplan__",
+              str(entry)[:160])
         ids = _re.findall(r'"id":\s*(\d+)', text)
         if ids:
             state["mealplan_id"] = ids[0]
@@ -908,6 +930,9 @@ async def run(session: ClientSession) -> None:
                          "title": "__test_bulk_week_mealplan__", "whole_week": True}]
         })
         check_tool("create_mealplan_bulk (whole_week)", r)
+        created = _json.loads(r.content[0].text).get("created", []) if not r.isError else []
+        check("create_mealplan_bulk whole_week entry returned with its endDate",
+              len(created) == 1 and bool(created[0].get("endDate")), str(created)[:160])
         bulk = [e for e in mealplans_between("2099-02-01", "2099-02-28")
                 if e.get("title") == "__test_bulk_week_mealplan__"]
         check("create_mealplan_bulk whole_week entry aligns to household week",

@@ -1,14 +1,53 @@
 import logging
 import traceback
+import uuid
+from datetime import date as Date
 from typing import Any, Dict, List, Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 
 from mealie import MealieFetcher
 from models.mealplan import MealPlanEntry
 
 logger = logging.getLogger("mealie-mcp")
+
+ENTRY_TYPES = ("breakfast", "lunch", "dinner", "side", "snack", "drink", "dessert")
+
+
+def entry_problem(entry: MealPlanEntry) -> Optional[str]:
+    """Why Mealie would reject this entry, or None — checked before creating anything."""
+    try:
+        Date.fromisoformat(entry.date)
+    except (TypeError, ValueError):
+        return f'date "{entry.date}" is not YYYY-MM-DD'
+    if entry.entry_type not in ENTRY_TYPES:
+        return f'entry_type "{entry.entry_type}" must be one of: {", ".join(ENTRY_TYPES)}'
+    if not entry.recipe_id and not entry.title:
+        return "needs a recipe_id or a title"
+    if entry.recipe_id:
+        try:
+            uuid.UUID(str(entry.recipe_id))
+        except ValueError:
+            return f'recipe_id "{entry.recipe_id}" is not a recipe UUID'
+    return None
+
+
+def summarize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """A created meal plan entry without the embedded recipe summary."""
+    summary: Dict[str, Any] = {"id": entry.get("id"), "date": entry.get("date")}
+    if entry.get("endDate"):
+        summary["endDate"] = entry["endDate"]
+    summary["entryType"] = entry.get("entryType")
+    if entry.get("title"):
+        summary["title"] = entry["title"]
+    if entry.get("recipeId"):
+        recipe = entry.get("recipe") or {}
+        summary["recipeId"] = entry["recipeId"]
+        summary["recipeName"] = recipe.get("name")
+        summary["recipeSlug"] = recipe.get("slug")
+    return summary
 
 
 def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
@@ -74,13 +113,16 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             date: Date for the mealplan in ISO format (YYYY-MM-DD)
             recipe_id: UUID of the recipe to add to the mealplan (optional)
             title: Title for the mealplan entry if not using a recipe (optional)
-            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side)
+            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side, snack,
+                drink, dessert)
             whole_week: Plan it for the whole week containing `date` instead of that
                 day ("dinner sometime this week"). The week follows the household's
                 first-day-of-week setting in Mealie.
 
         Returns:
-            Dict[str, Any]: JSON response containing the created mealplan entry
+            Dict[str, Any]: The created entry: id (use it with update_mealplan and
+                delete_mealplan), date, endDate (week entries only), entryType, and
+                title or recipeId/recipeName/recipeSlug
         """
         try:
             logger.info(
@@ -93,13 +135,14 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                     "whole_week": whole_week,
                 }
             )
-            return mealie.create_mealplan(
-                date=date,
-                recipe_id=recipe_id,
-                title=title,
-                entry_type=entry_type,
-                whole_week=whole_week,
+            entry = MealPlanEntry(
+                date=date, recipe_id=recipe_id, title=title,
+                entry_type=entry_type, whole_week=whole_week,
             )
+            problem = entry_problem(entry)
+            if problem:
+                raise ValueError(problem)
+            return summarize_entry(mealie.create_mealplan(**entry.model_dump()))
         except Exception as e:
             error_msg = f"Error creating mealplan entry: {str(e)}"
             logger.error({"message": error_msg})
@@ -114,35 +157,79 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     ) -> Dict[str, Any]:
         """Create multiple meal plan entries in bulk.
 
+        Every entry is checked before any is created, so a mistake in one creates
+        nothing. If Mealie then fails partway, the error says which entries were
+        created (with their ids) and which were not, so retry only the rest.
+
         Args:
             entries: List of mealplan entries, each containing:
                 - date (str): Date in ISO format (YYYY-MM-DD)
                 - recipe_id (str, optional): UUID of the recipe
                 - title (str, optional): Title for the entry
-                - entry_type (str, optional): Type of entry (breakfast, lunch, dinner, side)
+                - entry_type (str, optional): Type of entry (breakfast, lunch, dinner,
+                  side, snack, drink, dessert)
                 - whole_week (bool, optional): Plan it for the whole week containing date
 
         Returns:
-            Dict[str, Any]: JSON response with success message
+            Dict[str, Any]: created — the entries in the order given, each with its id
+                (use it with update_mealplan and delete_mealplan), date, endDate (week
+                entries only), entryType, and title or recipeId/recipeName/recipeSlug
         """
-        try:
-            logger.info(
-                {
-                    "message": "Creating bulk mealplan entries",
-                    "entries_count": len(entries),
-                }
-            )
-            for entry in entries:
-                entry_obj = MealPlanEntry.model_validate(entry)
-                mealie.create_mealplan(**entry_obj.model_dump())
-            return {"message": f"Successfully created {len(entries)} mealplan entries"}
-        except Exception as e:
-            error_msg = f"Error creating bulk mealplan entries: {str(e)}"
+        logger.info({"message": "Creating bulk mealplan entries", "entries_count": len(entries)})
+        if not entries:
+            raise ToolError("Error creating bulk mealplan entries: entries cannot be empty")
+
+        def describe(index: int, entry: Any) -> str:
+            day = entry.get("date") if isinstance(entry, dict) else None
+            return f"entry {index + 1}" + (f" ({day})" if day else "")
+
+        parsed: List[MealPlanEntry] = []
+        problems: List[str] = []
+        for index, raw in enumerate(entries):
+            try:
+                entry = MealPlanEntry.model_validate(raw)
+                problem = entry_problem(entry)
+            except ValidationError as e:
+                fields = ", ".join(MealPlanEntry.model_fields)
+                entry, problem = None, "; ".join(
+                    f'unknown field "{err["loc"][0]}" (fields are: {fields})'
+                    if err["type"] == "extra_forbidden"
+                    else f"{'.'.join(str(part) for part in err['loc']) or 'entry'}: {err['msg']}"
+                    for err in e.errors()
+                )
+            if problem:
+                problems.append(f"{describe(index, raw)}: {problem}")
+            else:
+                parsed.append(entry)
+        if problems:
+            error_msg = "Error creating bulk mealplan entries: nothing was created. " + "; ".join(problems)
             logger.error({"message": error_msg})
-            logger.debug(
-                {"message": "Error traceback", "traceback": traceback.format_exc()}
-            )
             raise ToolError(error_msg)
+
+        created: List[Dict[str, Any]] = []
+        for index, entry in enumerate(parsed):
+            try:
+                created.append(summarize_entry(mealie.create_mealplan(**entry.model_dump())))
+            except Exception as e:
+                done = (
+                    f"Created {len(created)} of {len(parsed)} entries"
+                    + (f" (ids {', '.join(str(c['id']) for c in created)})" if created else "")
+                )
+                remaining = len(parsed) - index - 1
+                rest = (
+                    "" if not remaining
+                    else f"; entry {index + 2} was not attempted" if remaining == 1
+                    else f"; entries {index + 2}-{len(parsed)} were not attempted"
+                )
+                error_msg = (
+                    f"Error creating bulk mealplan entries: {done}; "
+                    f"{describe(index, entries[index])} failed: {e}{rest}. "
+                    "Retry only the entries that were not created."
+                )
+                logger.error({"message": error_msg})
+                logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
+                raise ToolError(error_msg)
+        return {"created": created}
 
     @mcp.tool()
     def update_mealplan(
@@ -160,7 +247,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 create_mealplan
             date: New date for the entry (YYYY-MM-DD); for a week entry, any day in
                 the target week
-            entry_type: Type of entry (breakfast, lunch, dinner, side)
+            entry_type: Type of entry (breakfast, lunch, dinner, side, snack, drink,
+                dessert)
             recipe_id: UUID of the recipe (optional)
             title: Title for non-recipe entries (optional)
             whole_week: True makes it a whole-week entry, False a single-day entry;

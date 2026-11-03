@@ -188,6 +188,8 @@ python tests/test_tool_helpers.py
   `recipeId`, `name`, `slug`, `recipeQuantity`
 - `update_shopping_list_label_settings` reorders by label name (named first, the rest
   keep their order) and sends nothing for an unknown name or an empty list
+- `create_mealplan` / `create_mealplan_bulk` return trimmed entries with ids, check every
+  bulk entry before creating any, and report exactly what was created on a partial failure
 
 **Requirements:**
 - None beyond the project's own dependencies
