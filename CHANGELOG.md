@@ -24,6 +24,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 
 ### Tests
 
+- `tests/LLM_PROMPT_CREATE.md` — the unknown-unit check had stopped testing anything: "slices" was added to the unit catalog, so it resolved as a normal unit and passed. Ingredient 4 is now "2 rashers bacon", sent exactly as given, and a `get_units` pre-check makes the group report NOT TESTED instead of a false PASS if "rashers" is ever added.
 - `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
 - `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
 - `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.

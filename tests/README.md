@@ -214,7 +214,9 @@ tool once — chaining IDs/slugs from earlier calls — and report PASS/FAIL per
 
 Not a script, and **mutating**. Paste the body into Claude or ChatGPT with the MCP
 server connected. It has the model create one recipe from fixed data (engineered to
-stress alias field names, an unknown unit, bare-unit yield, and per-serving nutrition),
+stress alias field names, an unknown unit ("rashers", pre-checked against `get_units` so
+the check reports NOT TESTED rather than a false PASS if the unit is ever added), bare-unit
+yield, and per-serving nutrition),
 read it back, and report PASS/FAIL for 9 field groups. Exercises the real write seam
 that automated tests can't — a real model choosing field names → the deployed server.
 
