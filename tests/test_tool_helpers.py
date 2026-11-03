@@ -6,6 +6,7 @@ No live infrastructure — exercises logic against stand-in objects:
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
 - shopping list tools trimming recipeReferences
+- reordering a shopping list's sections by label name
 
 Usage:
     cd mealie-mcp-server
@@ -115,6 +116,37 @@ class FakeShopping:
         return FULL_LIST
 
 
+class FakeLabels:
+    """A list with four labels in alphabetical order; records the label settings PUT."""
+
+    NAMES = ["Baking", "Fruits", "Meats", "Vegetables & Greens"]
+
+    def __init__(self):
+        self.puts = []
+        self.settings = [
+            {"id": f"S{i}", "shoppingListId": "L1", "labelId": f"LBL{i}", "position": i,
+             "label": {"id": f"LBL{i}", "name": name}}
+            for i, name in enumerate(self.NAMES)
+        ]
+
+    def get_shopping_list(self, list_id):
+        return {"id": "L1", "name": "Groceries", "labelSettings": self.settings}
+
+    def update_shopping_list_label_settings(self, list_id, payload):
+        self.puts.append(payload)
+        by_id = {st["id"]: st for st in self.settings}
+        self.settings = [{**by_id[p["id"]], "position": p["position"]} for p in payload]
+        return self.get_shopping_list(list_id)
+
+
+def call_error(srv: FastMCP, tool: str, args: dict) -> str:
+    try:
+        call(srv, tool, args)
+    except Exception as e:
+        return str(e)
+    return ""
+
+
 def call(srv: FastMCP, tool: str, args: dict) -> dict:
     result = asyncio.run(srv.call_tool(tool, args))
     content = result[0] if isinstance(result, tuple) else result
@@ -199,6 +231,33 @@ def run() -> None:
     check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
           fake.sent == [{"name": "Groceries"}], str(fake.sent))
     check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
+
+    # ------------------------------------------------------------------
+    section("Shopping list section order by label name")
+    # ------------------------------------------------------------------
+    fake = FakeLabels()
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    out = call(srv, "update_shopping_list_label_settings",
+               {"list_id": "L1", "labels": ["vegetables & greens", "FRUITS", "Fruits"]})
+    check("named labels first (any case, duplicates ignored), the rest keep their order",
+          out.get("labelOrder") == ["Vegetables & Greens", "Fruits", "Baking", "Meats"], str(out))
+    put = fake.puts[-1] if fake.puts else []
+    check("sends every setting with id, shoppingListId, labelId and position",
+          [(p["id"], p["shoppingListId"], p["labelId"], p["position"]) for p in put]
+          == [("S3", "L1", "LBL3", 0), ("S1", "L1", "LBL1", 1), ("S0", "L1", "LBL0", 2), ("S2", "L1", "LBL2", 3)],
+          str(put))
+    out = call(srv, "update_shopping_list_label_settings", {"list_id": "L1", "labels": ["LBL2"]})
+    check("a label id is accepted too", out.get("labelOrder", [None])[0] == "Meats", str(out))
+
+    puts = len(fake.puts)
+    err = call_error(srv, "update_shopping_list_label_settings",
+                     {"list_id": "L1", "labels": ["Meats", "Produce"]})
+    check("unknown name: error names it and lists the real labels",
+          '"Produce"' in err and all(n in err for n in FakeLabels.NAMES), err)
+    check("unknown name: nothing sent to Mealie", len(fake.puts) == puts)
+    err = call_error(srv, "update_shopping_list_label_settings", {"list_id": "L1", "labels": []})
+    check("empty list rejected without sending", bool(err) and len(fake.puts) == puts, err)
 
     # ------------------------------------------------------------------
     section("Summary")

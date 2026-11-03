@@ -148,7 +148,7 @@ You have access to a Mealie MCP server. Use the following tools to build a shopp
 - get_shopping_lists: check for an existing shopping list to update
 - create_shopping_list: create a new shopping list if needed
 - add_recipes_to_shopping_list_bulk: add all meal plan recipes at once
-- update_shopping_list_label_settings: set label order for the target store
+- update_shopping_list_label_settings: reorder the list's sections (label names) for the store
 </context>
 
 <instructions>
@@ -160,42 +160,14 @@ You have access to a Mealie MCP server. Use the following tools to build a shopp
 2. Collect all recipes from the plan
 3. Add all recipes to the shopping list in one bulk operation
 4. Consolidate duplicate ingredients into total quantities
-5. Group items by food label / grocery store section
+5. Group items by label (grocery store section), in the store's order
 
 ## Grocery Store Sections
-Use these labels in order when grouping:
-- Baked Goods
-- Baking
-- Beverages
-- Canned & Jarred Goods
-- Cereals
-- Cheese
-- Condiments
-- Dairy & Eggs
-- Dairy-Free
-- Dressings & Vinegars
-- Frozen Foods
-- Fruits
-- Herbs & Spices
-- Legumes
-- Meats
-- Mushrooms
-- Nuts & Seeds
-- Oils & Fats
-- Packaged & Prepared Foods
-- Pasta
-- Poultry
-- Pre-Made Doughs & Wrappers
-- Rice and Grains
-- Sauces, Spreads & Dips
-- Seafood
-- Seasonings & Spice Blends
-- Snacks
-- Soups, Stews & Stock
-- Sugar & Sweeteners
-- Supplements & Extracts
-- Vegetables & Greens
-- Wine, Beer & Spirits
+Sections are this Mealie's labels. Call get_labels for the exact names; never invent a section.
+When a store is named, put the labels in the order that store is walked (labels that share an
+area, such as several produce labels, go next to each other), then call
+update_shopping_list_label_settings with those names in that order so the list in Mealie
+matches. Without a store, keep the list's current section order.
 
 ## Grocery Cost Estimation
 - Exclude pantry staples from cost estimate
@@ -206,9 +178,9 @@ Use these labels in order when grouping:
 
 ## Output Format
 Shopping List
-  Vegetables & Greens:
+  <Label name>:
     - item
-  Dairy & Eggs:
+  <Next label name>:
     - item
 
 Estimated Cost:
@@ -416,8 +388,9 @@ For each ingredient, search get_foods by name before using it.
 - If an exact or very close match exists, use that food name exactly as it appears in the library.
 - If no match exists, use the new food name as-is — create_recipe will auto-create it.
   However, if you want the food to have a shopping list label (aisle), create it manually first:
-  1. Call get_labels to find the appropriate label (e.g. "Vegetables & Greens", "Meats", "Dairy & Eggs")
-  2. Call create_food with the food name and the matching label_id
+  1. Call get_labels and pick the label for the store section where this food is shelved.
+     Use only a label from that list; never invent one.
+  2. Call create_food with the food name and that label's id
 - Do not silently invent food names that differ from what's in the library.
 
 ## Step 4 — Present preview

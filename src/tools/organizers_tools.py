@@ -66,8 +66,10 @@ def register_organizers_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         page: Optional[int] = None,
         per_page: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """List all shopping list labels used to categorize and sort shopping items
-        by store section (e.g. Produce, Dairy & Eggs, Meats).
+        """List the shopping list labels defined in this Mealie. A label is the store
+        section a food is filed under, and shopping lists are grouped and ordered by
+        label. The names are whatever this Mealie defines: use them exactly as
+        returned, and never invent a label that isn't listed.
 
         Args:
             page: Page number to retrieve

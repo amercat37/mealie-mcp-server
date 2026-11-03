@@ -23,7 +23,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 
 ### 🛒 Shopping Lists
 - **List Management**: Create, rename, and delete shopping lists
-- **Label Ordering**: Configure store-specific label order (match your store's aisle layout)
+- **Label Ordering**: Reorder a list's sections by label name to match a store's layout
 - **Item Operations**: Add, update, check off, and remove items
 - **Bulk Operations**: Create, update, or delete multiple items at once
 - **Recipe Integration**: Add one or many recipes' ingredients to a list at once

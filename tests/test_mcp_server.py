@@ -665,7 +665,6 @@ async def run(session: ClientSession) -> None:
         for tool, args in [
             ("get_shopping_list", {"list_id": lid}),
             ("update_shopping_list", {"list_id": lid, "name": "__test_shopping_list_renamed__"}),
-            ("update_shopping_list_label_settings", {"list_id": lid, "label_settings": []}),
             ("get_shopping_list_items", {}),
         ]:
             try:
@@ -673,6 +672,40 @@ async def run(session: ClientSession) -> None:
                 check_tool(tool, r)
             except Exception as e:
                 check(tool, False, str(e))
+
+        # Section order by label name: named labels first, the rest keep their order
+        def label_order(list_data: dict) -> list:
+            return [st["label"]["name"] for st in
+                    sorted(list_data.get("labelSettings", []), key=lambda st: st["position"])]
+
+        try:
+            before = label_order(_mealie.get_shopping_list(lid))
+            if len(before) >= 3:
+                pick = [before[-1], before[-2], before[-3]]
+                r = await session.call_tool("update_shopping_list_label_settings", {
+                    "list_id": lid, "labels": [pick[0].upper(), pick[1], pick[2]],
+                })
+                out = _json.loads(r.content[0].text) if not r.isError else {}
+                expected = pick + [n for n in before if n not in pick]
+                check("update_shopping_list_label_settings orders named labels first, rest unchanged",
+                      out.get("labelOrder") == expected and label_order(_mealie.get_shopping_list(lid)) == expected,
+                      error_text(r) if r.isError else str(out.get("labelOrder", ""))[:120])
+
+                r = await session.call_tool("update_shopping_list_label_settings", {
+                    "list_id": lid, "labels": [before[0], "__not_a_label__"],
+                })
+                msg = error_text(r)
+                check("update_shopping_list_label_settings rejects an unknown name and lists the real ones",
+                      r.isError and "__not_a_label__" in msg and before[1] in msg, msg[:160])
+                check("unknown label name changes nothing",
+                      label_order(_mealie.get_shopping_list(lid)) == expected)
+
+                r = await session.call_tool("update_shopping_list_label_settings", {"list_id": lid, "labels": []})
+                check("update_shopping_list_label_settings rejects an empty list", r.isError, error_text(r)[:120])
+            else:
+                check("update_shopping_list_label_settings", False, f"need 3+ labels, list has {len(before)}")
+        except Exception as e:
+            check("update_shopping_list_label_settings", False, str(e))
 
         try:
             r = await session.call_tool("create_shopping_list_item", {

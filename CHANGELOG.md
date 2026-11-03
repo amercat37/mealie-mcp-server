@@ -11,6 +11,8 @@ Follow-ups from the v1.0.23 assistant test runs.
 ### Changed
 
 - **Shopping lists no longer embed whole recipes.** Each `recipeReferences` entry carried a full recipe summary (description, tags, categories, times…) — most of the list's size, and the times showed as `null`. Every tool that returns a whole list (`get_shopping_lists`, `get_shopping_list`, `create_shopping_list`, `update_shopping_list`, `delete_shopping_list`, `add_recipe_to_shopping_list`, `remove_recipe_from_shopping_list`, `add_recipes_to_shopping_list_bulk`) now returns `{recipeId, name, slug, recipeQuantity}` per recipe. Only the tool output is trimmed; the rename still sends Mealie the full list.
+- **`update_shopping_list_label_settings` takes label names in store order.** It previously passed raw label-setting objects through, and its description said each needed only `labelId` + `position` — Mealie also requires `id` and `shoppingListId`, so following the description always failed. The tool now takes `labels`: names as `get_labels` returns them (case-insensitive; a label id is accepted too). Named labels go first and the rest keep their current relative order. Every name is checked before anything is sent: an unknown one returns an error listing the list's real labels and changes nothing. It returns only the resulting `labelOrder`.
+- **No label names hard-coded in tool descriptions or prompts.** The `shopping_trip` prompt listed one Mealie's labels alphabetically and told the assistant to use them in that order (working against the store order, and missing a label). It, the `recipe_builder` prompt and `get_labels` now send the assistant to `get_labels` for the exact names and say never to invent one.
 
 ### Fixed
 
@@ -21,6 +23,8 @@ Follow-ups from the v1.0.23 assistant test runs.
 - `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
 - `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
 - `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.
+- `tests/test_tool_helpers.py` — label reordering: order, payload fields, case and duplicate handling, id fallback, unknown and empty input send nothing.
+- `tests/test_mcp_server.py` — live label reordering on the test list (named first, rest unchanged), unknown-name rejection with nothing changed, empty input rejected.
 
 ---
 

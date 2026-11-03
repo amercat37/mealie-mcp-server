@@ -52,7 +52,7 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `GET /api/households/shopping/lists/{id}` - Fetch a shopping list and its metadata by ID
 - ✅ `PUT /api/households/shopping/lists/{id}` - Rename or update the metadata of an existing shopping list
 - ✅ `DELETE /api/households/shopping/lists/{id}` - Delete a shopping list and all its items
-- ✅ `PUT /api/households/shopping/lists/{id}/label-settings` - Configure which labels appear and in what order on a shopping list
+- ✅ `PUT /api/households/shopping/lists/{id}/label-settings` - Reorder a shopping list's sections; the tool takes label names in store order and validates them before sending
 
 **Recipe Integration:**
 - ✅ `POST /api/households/shopping/lists/{id}/recipe/{recipe_id}` - Add all ingredients from a recipe to a shopping list

@@ -186,6 +186,8 @@ python tests/test_tool_helpers.py
   `lastMade`, and still return the recipe when the `lastMade` lookup fails
 - Every shopping list tool that returns a whole list trims `recipeReferences` to
   `recipeId`, `name`, `slug`, `recipeQuantity`
+- `update_shopping_list_label_settings` reorders by label name (named first, the rest
+  keep their order) and sends nothing for an unknown name or an empty list
 
 **Requirements:**
 - None beyond the project's own dependencies

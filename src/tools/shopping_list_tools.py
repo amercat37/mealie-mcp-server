@@ -125,25 +125,87 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     @mcp.tool()
     def update_shopping_list_label_settings(
         list_id: str,
-        label_settings: List[Dict[str, Any]],
+        labels: List[str],
     ) -> Dict[str, Any]:
-        """Set the label display order for a shopping list (e.g. to match a specific store's layout).
+        """Reorder a shopping list's sections to match a store's layout. Each section
+        is a label (the store section a food is filed under), and every list keeps
+        its own order.
 
-        Each entry in label_settings must include a labelId and position.
-        Example: [{"labelId": "uuid", "position": 0}, {"labelId": "uuid2", "position": 1}]
+        Call get_labels first and use the label names exactly as returned: names are
+        whatever this Mealie defines, so never guess or invent one. Matching ignores
+        case. If any name is unknown, nothing is changed and the error lists the
+        list's real label names.
+
+        Example: labels=["<first label name from get_labels>", "<next label name>", ...]
 
         Args:
             list_id: The UUID of the shopping list
-            label_settings: Ordered list of label setting objects
+            labels: Label names in the order the store is walked. Labels left out
+                keep their current relative order after the named ones.
 
         Returns:
-            Dict[str, Any]: The updated label settings
+            Dict[str, Any]: The list's id and name, and labelOrder — every label
+                name in the resulting order
         """
         try:
-            logger.info({"message": "Updating shopping list label settings", "list_id": list_id})
-            return mealie.update_shopping_list_label_settings(list_id, label_settings)
+            logger.info({"message": "Updating shopping list label order", "list_id": list_id, "labels": labels})
+            if not labels:
+                raise ValueError("Give at least one label name, in store order (see get_labels)")
+
+            current = sorted(
+                mealie.get_shopping_list(list_id).get("labelSettings") or [],
+                key=lambda setting: setting.get("position", 0),
+            )
+            lookup: Dict[str, Dict[str, Any]] = {}
+            for setting in current:
+                name = (setting.get("label") or {}).get("name")
+                if name:
+                    lookup[name.strip().lower()] = setting
+                # A label id is accepted too, for a caller that already has one
+                lookup[str(setting.get("labelId", "")).lower()] = setting
+
+            unknown = [name for name in labels if str(name).strip().lower() not in lookup]
+            if unknown:
+                valid = sorted(
+                    (setting.get("label") or {}).get("name", "") for setting in current
+                )
+                raise ValueError(
+                    "Unknown label "
+                    + ", ".join(f'"{name}"' for name in unknown)
+                    + ". Nothing was changed. This list's labels are: "
+                    + ", ".join(valid)
+                )
+
+            ordered: List[Dict[str, Any]] = []
+            for name in labels:
+                setting = lookup[str(name).strip().lower()]
+                if setting not in ordered:
+                    ordered.append(setting)
+            ordered += [setting for setting in current if setting not in ordered]
+
+            payload = [
+                {
+                    "id": setting["id"],
+                    "shoppingListId": list_id,
+                    "labelId": setting["labelId"],
+                    "position": position,
+                }
+                for position, setting in enumerate(ordered)
+            ]
+            updated = mealie.update_shopping_list_label_settings(list_id, payload)
+            return {
+                "id": updated.get("id", list_id),
+                "name": updated.get("name"),
+                "labelOrder": [
+                    (setting.get("label") or {}).get("name")
+                    for setting in sorted(
+                        updated.get("labelSettings") or [],
+                        key=lambda setting: setting.get("position", 0),
+                    )
+                ],
+            }
         except Exception as e:
-            error_msg = f"Error updating label settings for list '{list_id}': {str(e)}"
+            error_msg = f"Error updating label order for list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)

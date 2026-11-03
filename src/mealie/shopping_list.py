@@ -383,11 +383,11 @@ class ShoppingListMixin:
 
         Args:
             list_id: UUID of the shopping list
-            label_settings: Ordered list of label setting objects, e.g.
-                [{"labelId": "uuid", "position": 0}, ...]
+            label_settings: The list's label settings, each with id, shoppingListId,
+                labelId and position (Mealie rejects entries missing any of them)
 
         Returns:
-            JSON response containing the updated label settings
+            JSON response containing the updated shopping list
         """
         if not list_id:
             raise ValueError("Shopping list ID cannot be empty")
