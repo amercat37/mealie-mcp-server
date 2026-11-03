@@ -61,6 +61,18 @@ def check(name: str, condition: bool, detail: str = "") -> None:
     results.append((name, condition, detail))
 
 
+def error_text(r) -> str:
+    """Text of a tool result, for reporting why a call failed."""
+    return " ".join(getattr(c, "text", "") for c in (r.content or []))[:300]
+
+
+def check_tool(name: str, r) -> None:
+    """Pass only if the tool call succeeded. A failing tool raises ToolError, which
+    the MCP client returns as a normal result with isError=True and the error text
+    as content — so checking that content is present would pass on failures too."""
+    check(name, not r.isError, error_text(r) if r.isError else "")
+
+
 def section(title: str) -> None:
     print(f"\n{'='*60}\n  {title}\n{'='*60}")
 
@@ -331,6 +343,51 @@ async def run(session: ClientSession) -> None:
         check("get_recipe_concise", False, str(e))
         check("get_recipe_concise includes totalTime", False, str(e))
 
+    # Recipe times: create_recipe stores Mealie's structured seconds (not the legacy
+    # text), and the read tools turn them back into readable text.
+    try:
+        raw = _mealie.get_recipe(slug)
+        check("create_recipe stores times as seconds",
+              (raw.get("prepTimeSeconds"), raw.get("performTimeSeconds"), raw.get("totalTimeSeconds"))
+              == (600, 1200, 1800),
+              str({k: raw.get(k) for k in ("prepTimeSeconds", "performTimeSeconds", "totalTimeSeconds")}))
+        check("create_recipe leaves legacy time text empty",
+              not (raw.get("prepTime") or raw.get("performTime") or raw.get("totalTime")),
+              str({k: raw.get(k) for k in ("prepTime", "performTime", "totalTime")}))
+        r = await session.call_tool("get_recipe_detailed", {"slug": slug})
+        d = _json.loads(r.content[0].text)
+        check("get_recipe_detailed readable times + seconds",
+              (d.get("prepTime"), d.get("performTime"), d.get("totalTime"), d.get("totalTimeSeconds"))
+              == ("10 minutes", "20 minutes", "30 minutes", 1800),
+              str({k: d.get(k) for k in ("prepTime", "performTime", "totalTime", "totalTimeSeconds")}))
+        check("get_recipe_detailed has lastMade key", "lastMade" in d)
+        r = await session.call_tool("get_recipe_concise", {"slug": slug})
+        c = _json.loads(r.content[0].text)
+        check("get_recipe_concise totalTime is readable", c.get("totalTime") == "30 minutes", str(c.get("totalTime")))
+        r = await session.call_tool("get_recipes", {"search": "__test_recipe__", "per_page": 10})
+        items = [i for i in _json.loads(r.content[0].text).get("items", []) if i.get("slug") == slug]
+        check("get_recipes list has readable times + seconds",
+              bool(items) and items[0].get("totalTime") == "30 minutes" and items[0].get("totalTimeSeconds") == 1800,
+              str({k: items[0].get(k) for k in ("totalTime", "totalTimeSeconds")}) if items else "recipe not in list")
+    except Exception as e:
+        check("recipe time round-trip", False, str(e))
+
+    # A unit-less time is rejected before anything is created
+    try:
+        r = await session.call_tool("create_recipe", {
+            "recipe": {"name": "__test_recipe_bare_time__", "prepTime": "45"}
+        })
+        check("create_recipe rejects bare-number time",
+              r.isError and "no unit" in error_text(r), error_text(r))
+        try:
+            _mealie.get_recipe("test-recipe-bare-time")
+            check("bare-number rejection created no recipe", False, "stub recipe exists — deleting it")
+            _mealie.delete_recipe("test-recipe-bare-time")
+        except Exception:
+            check("bare-number rejection created no recipe", True)
+    except Exception as e:
+        check("create_recipe rejects bare-number time", False, str(e))
+
     check(
         "get_recipe_concise exercised recipeCategory/tags/tools (organizers populated)",
         bool(state.get("pre_category_slug") or state.get("pre_tag_slug") or state.get("pre_tool_slug")),
@@ -345,24 +402,38 @@ async def run(session: ClientSession) -> None:
         check("duplicate_recipe", len(text) > 5)
         if "test-recipe-copy" in text:
             state["recipe_copy_slug"] = "test-recipe-copy"
+        if not r.isError:
+            dup = _json.loads(text)
+            check("duplicate_recipe copies seconds and shows readable times",
+                  (dup.get("totalTime"), dup.get("totalTimeSeconds")) == ("30 minutes", 1800),
+                  str({k: dup.get(k) for k in ("totalTime", "totalTimeSeconds")}))
     except Exception as e:
         check("duplicate_recipe", False, str(e))
 
     try:
         r = await session.call_tool("mark_recipe_last_made", {"slug": slug})
-        check("mark_recipe_last_made", r.content is not None)
+        check_tool("mark_recipe_last_made", r)
     except Exception as e:
         check("mark_recipe_last_made", False, str(e))
 
+    # Mealie v3.29+ keeps lastMade per household, not on the recipe; the read tools add it back
+    try:
+        r = await session.call_tool("get_recipe_concise", {"slug": slug})
+        c = _json.loads(r.content[0].text)
+        check("get_recipe_concise shows lastMade after mark_recipe_last_made",
+              bool(c.get("lastMade")), str(c.get("lastMade")))
+    except Exception as e:
+        check("get_recipe_concise shows lastMade after mark_recipe_last_made", False, str(e))
+
     try:
         r = await session.call_tool("get_recipe_comments", {"slug": slug})
-        check("get_recipe_comments", r.content is not None)
+        check_tool("get_recipe_comments", r)
     except Exception as e:
         check("get_recipe_comments", False, str(e))
 
     try:
         r = await session.call_tool("create_recipe_comment", {"slug": slug, "text": "MCP test comment"})
-        check("create_recipe_comment", r.content is not None)
+        check_tool("create_recipe_comment", r)
     except Exception as e:
         check("create_recipe_comment", False, str(e))
 
@@ -375,19 +446,19 @@ async def run(session: ClientSession) -> None:
 
     try:
         r = await session.call_tool("get_recipe_share_tokens", {"slug": slug})
-        check("get_recipe_share_tokens", r.content is not None)
+        check_tool("get_recipe_share_tokens", r)
     except Exception as e:
         check("get_recipe_share_tokens", False, str(e))
 
     try:
         r = await session.call_tool("create_recipe_share_token", {"slug": slug})
-        check("create_recipe_share_token", r.content is not None)
+        check_tool("create_recipe_share_token", r)
     except Exception as e:
         check("create_recipe_share_token", False, str(e))
 
     try:
         r = await session.call_tool("get_recipe_exports", {"slug": slug})
-        check("get_recipe_exports", r.content is not None)
+        check_tool("get_recipe_exports", r)
     except Exception as e:
         check("get_recipe_exports", False, str(e))
 
@@ -396,13 +467,13 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     try:
         r = await session.call_tool("get_categories", {"per_page": 5})
-        check("get_categories", r.content is not None)
+        check_tool("get_categories", r)
     except Exception as e:
         check("get_categories", False, str(e))
 
     try:
         r = await session.call_tool("get_empty_categories", {})
-        check("get_empty_categories", r.content is not None)
+        check_tool("get_empty_categories", r)
         # FastMCP creates one TextContent item per list element, so isError=False means
         # the List[Dict] annotation matched — catches regression if annotation reverts to Dict
         check("get_empty_categories returns list", not r.isError, r.content[0].text[:60] if r.isError and r.content else "")
@@ -426,7 +497,7 @@ async def run(session: ClientSession) -> None:
     if state.get("category_id"):
         try:
             r = await session.call_tool("get_category", {"category_id": state["category_id"]})
-            check("get_category", r.content is not None)
+            check_tool("get_category", r)
             _data = _json.loads(r.content[0].text) if r.content else {}
             _recipes = _data.get("recipes", [])
             check("get_category recipes are slugs", not _recipes or isinstance(_recipes[0], str),
@@ -438,7 +509,7 @@ async def run(session: ClientSession) -> None:
     if state.get("category_slug"):
         try:
             r = await session.call_tool("get_category_by_slug", {"category_slug": state["category_slug"]})
-            check("get_category_by_slug", r.content is not None)
+            check_tool("get_category_by_slug", r)
             _data = _json.loads(r.content[0].text) if r.content else {}
             _recipes = _data.get("recipes", [])
             check("get_category_by_slug recipes are slugs", not _recipes or isinstance(_recipes[0], str),
@@ -452,13 +523,13 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     try:
         r = await session.call_tool("get_tags", {"per_page": 5})
-        check("get_tags", r.content is not None)
+        check_tool("get_tags", r)
     except Exception as e:
         check("get_tags", False, str(e))
 
     try:
         r = await session.call_tool("get_empty_tags", {})
-        check("get_empty_tags", r.content is not None)
+        check_tool("get_empty_tags", r)
         check("get_empty_tags returns list", not r.isError, r.content[0].text[:60] if r.isError and r.content else "")
     except Exception as e:
         check("get_empty_tags", False, str(e))
@@ -479,7 +550,7 @@ async def run(session: ClientSession) -> None:
     if state.get("tag_id"):
         try:
             r = await session.call_tool("get_tag", {"tag_id": state["tag_id"]})
-            check("get_tag", r.content is not None)
+            check_tool("get_tag", r)
             _data = _json.loads(r.content[0].text) if r.content else {}
             _recipes = _data.get("recipes", [])
             check("get_tag recipes are slugs", not _recipes or isinstance(_recipes[0], str),
@@ -491,7 +562,7 @@ async def run(session: ClientSession) -> None:
     if state.get("tag_slug"):
         try:
             r = await session.call_tool("get_tag_by_slug", {"tag_slug": state["tag_slug"]})
-            check("get_tag_by_slug", r.content is not None)
+            check_tool("get_tag_by_slug", r)
             _data = _json.loads(r.content[0].text) if r.content else {}
             _recipes = _data.get("recipes", [])
             check("get_tag_by_slug recipes are slugs", not _recipes or isinstance(_recipes[0], str),
@@ -508,7 +579,7 @@ async def run(session: ClientSession) -> None:
     ]:
         try:
             r = await session.call_tool(tool, args)
-            check(tool, r.content is not None)
+            check_tool(tool, r)
         except Exception as e:
             check(tool, False, str(e))
 
@@ -535,7 +606,7 @@ async def run(session: ClientSession) -> None:
     if state.get("food_a_id"):
         try:
             r = await session.call_tool("get_food", {"item_id": state["food_a_id"]})
-            check("get_food", r.content is not None)
+            check_tool("get_food", r)
         except Exception as e:
             check("get_food", False, str(e))
 
@@ -545,7 +616,7 @@ async def run(session: ClientSession) -> None:
                 "from_food_id": state["food_b_id"],
                 "to_food_id": state["food_a_id"],
             })
-            check("merge_foods", r.content is not None)
+            check_tool("merge_foods", r)
             state["food_b_id"] = None
         except Exception as e:
             check("merge_foods", False, str(e))
@@ -556,7 +627,7 @@ async def run(session: ClientSession) -> None:
     for tool in ["get_cooking_tools", "get_units", "get_labels"]:
         try:
             r = await session.call_tool(tool, {})
-            check(tool, r.content is not None)
+            check_tool(tool, r)
         except Exception as e:
             check(tool, False, str(e))
 
@@ -565,7 +636,7 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     try:
         r = await session.call_tool("get_cookbooks", {})
-        check("get_cookbooks", r.content is not None)
+        check_tool("get_cookbooks", r)
     except Exception as e:
         check("get_cookbooks", False, str(e))
 
@@ -574,7 +645,7 @@ async def run(session: ClientSession) -> None:
     # -----------------------------------------------------------------------
     try:
         r = await session.call_tool("get_shopping_lists", {})
-        check("get_shopping_lists", r.content is not None)
+        check_tool("get_shopping_lists", r)
     except Exception as e:
         check("get_shopping_lists", False, str(e))
 
@@ -599,7 +670,7 @@ async def run(session: ClientSession) -> None:
         ]:
             try:
                 r = await session.call_tool(tool, args)
-                check(tool, r.content is not None)
+                check_tool(tool, r)
             except Exception as e:
                 check(tool, False, str(e))
 
@@ -631,7 +702,7 @@ async def run(session: ClientSession) -> None:
             ]:
                 try:
                     r = await session.call_tool(tool, args)
-                    check(tool, r.content is not None)
+                    check_tool(tool, r)
                 except Exception as e:
                     check(tool, False, str(e))
 
@@ -657,7 +728,7 @@ async def run(session: ClientSession) -> None:
             ]:
                 try:
                     r = await session.call_tool(tool, args)
-                    check(tool, r.content is not None)
+                    check_tool(tool, r)
                 except Exception as e:
                     check(tool, False, str(e))
 
@@ -665,14 +736,16 @@ async def run(session: ClientSession) -> None:
             r = await session.call_tool("delete_shopping_list_items_bulk", {
                 "item_ids": []
             })
-            check("delete_shopping_list_items_bulk", r.content is not None)
+            # An empty list must be rejected: the tool raises ToolError, which comes
+            # back as an isError result carrying the "cannot be empty" message
+            check("delete_shopping_list_items_bulk rejects empty list",
+                  r.isError and "cannot be empty" in error_text(r).lower(), error_text(r))
         except Exception as e:
-            # Empty list raises ValueError — that's correct behavior
-            check("delete_shopping_list_items_bulk", "cannot be empty" in str(e).lower() or True)
+            check("delete_shopping_list_items_bulk rejects empty list", False, str(e))
 
         try:
             r = await session.call_tool("delete_shopping_list", {"list_id": lid})
-            check("delete_shopping_list", r.content is not None)
+            check_tool("delete_shopping_list", r)
             state["shopping_list_id"] = None
         except Exception as e:
             check("delete_shopping_list", False, str(e))
@@ -686,7 +759,7 @@ async def run(session: ClientSession) -> None:
     ]:
         try:
             r = await session.call_tool(tool, args)
-            check(tool, r.content is not None)
+            check_tool(tool, r)
         except Exception as e:
             check(tool, False, str(e))
 
@@ -694,7 +767,7 @@ async def run(session: ClientSession) -> None:
         r = await session.call_tool("create_mealplan_bulk", {
             "entries": [{"date": "2099-01-03", "entry_type": "lunch", "title": "__test_bulk_mealplan__"}]
         })
-        check("create_mealplan_bulk", r.content is not None)
+        check_tool("create_mealplan_bulk", r)
     except Exception as e:
         check("create_mealplan_bulk", False, str(e))
 
@@ -703,7 +776,7 @@ async def run(session: ClientSession) -> None:
             "date": "2099-01-01", "entry_type": "dinner", "title": "__test_mealplan__"
         })
         text = r.content[0].text if r.content else ""
-        check("create_mealplan", "id" in text)
+        check("create_mealplan", not r.isError and "id" in text, error_text(r) if r.isError else "")
         ids = _re.findall(r'"id":\s*(\d+)', text)
         if ids:
             state["mealplan_id"] = ids[0]
@@ -716,16 +789,85 @@ async def run(session: ClientSession) -> None:
             r = await session.call_tool("update_mealplan", {
                 "entry_id": mid, "date": "2099-01-02", "entry_type": "dinner"
             })
-            check("update_mealplan", r.content is not None)
+            check_tool("update_mealplan", r)
         except Exception as e:
             check("update_mealplan", False, str(e))
 
         try:
             r = await session.call_tool("delete_mealplan", {"entry_id": mid})
-            check("delete_mealplan", r.content is not None)
+            check_tool("delete_mealplan", r)
             state["mealplan_id"] = None
         except Exception as e:
             check("delete_mealplan", False, str(e))
+
+    # Whole-week entries (Mealie v3.30+): the week follows the household's
+    # firstDayOfWeek (0=Sunday) and must end exactly six days after it starts.
+    from datetime import date as _date, timedelta as _td
+    first_day = _mealie.get_household_preferences().get("firstDayOfWeek") or 0
+
+    def is_week_of(entry: dict, day: str) -> bool:
+        start, d = _date.fromisoformat(entry["date"]), _date.fromisoformat(day)
+        return ((start.weekday() + 1) % 7 == first_day and start <= d < start + _td(days=7)
+                and entry.get("endDate") == (start + _td(days=6)).isoformat())
+
+    def mealplans_between(start: str, end: str) -> list:
+        r = _mealie.get_mealplans(start_date=start, end_date=end, per_page=-1)
+        return r.get("items", [])
+
+    try:
+        r = await session.call_tool("create_mealplan", {
+            "date": "2099-01-07", "entry_type": "dinner", "title": "__test_week_mealplan__",
+            "whole_week": True,
+        })
+        week = _json.loads(r.content[0].text) if not r.isError else {}
+        check("create_mealplan whole_week aligns to household week",
+              bool(week) and is_week_of(week, "2099-01-07"),
+              error_text(r) if r.isError else f"date={week.get('date')} endDate={week.get('endDate')}")
+        wid = week.get("id")
+        if wid:
+            mid_week = (_date.fromisoformat(week["date"]) + _td(days=3)).isoformat()
+            in_range = mealplans_between(mid_week, mid_week)
+            check("get_all_mealplans includes overlapping week entry",
+                  any(e["id"] == wid for e in in_range), f"ids={[e['id'] for e in in_range]}")
+            leaked = any(e.get("title") == "__test_bulk_mealplan__" for e in in_range)
+            check("get_all_mealplans date filter excludes entries outside the range", not leaked,
+                  "2099-01-03 day entry returned for a later range" if leaked else "")
+            r = await session.call_tool("get_all_mealplans", {"start_date": mid_week, "end_date": mid_week})
+            check("get_all_mealplans tool returns week entry",
+                  not r.isError and any(e["id"] == wid for e in _json.loads(r.content[0].text).get("items", [])),
+                  error_text(r))
+
+            r = await session.call_tool("update_mealplan", {
+                "entry_id": str(wid), "date": "2099-01-21", "entry_type": "dinner",
+            })
+            moved = _json.loads(r.content[0].text) if not r.isError else {}
+            check("update_mealplan moves week entry (end date follows)",
+                  bool(moved) and is_week_of(moved, "2099-01-21"),
+                  error_text(r) if r.isError else f"date={moved.get('date')} endDate={moved.get('endDate')}")
+            r = await session.call_tool("update_mealplan", {
+                "entry_id": str(wid), "date": "2099-01-21", "entry_type": "dinner", "whole_week": False,
+            })
+            day = _json.loads(r.content[0].text) if not r.isError else {}
+            check("update_mealplan whole_week=False makes a day entry",
+                  day.get("date") == "2099-01-21" and not day.get("endDate"),
+                  error_text(r) if r.isError else f"date={day.get('date')} endDate={day.get('endDate')}")
+            r = await session.call_tool("delete_mealplan", {"entry_id": str(wid)})
+            check_tool("delete_mealplan (week entry)", r)
+    except Exception as e:
+        check("whole-week meal plan entries", False, str(e))
+
+    try:
+        r = await session.call_tool("create_mealplan_bulk", {
+            "entries": [{"date": "2099-02-04", "entry_type": "dinner",
+                         "title": "__test_bulk_week_mealplan__", "whole_week": True}]
+        })
+        check_tool("create_mealplan_bulk (whole_week)", r)
+        bulk = [e for e in mealplans_between("2099-02-01", "2099-02-28")
+                if e.get("title") == "__test_bulk_week_mealplan__"]
+        check("create_mealplan_bulk whole_week entry aligns to household week",
+              len(bulk) == 1 and is_week_of(bulk[0], "2099-02-04"), str(bulk))
+    except Exception as e:
+        check("create_mealplan_bulk (whole_week)", False, str(e))
 
     # -----------------------------------------------------------------------
     section("Cleanup — test recipes and foods")
@@ -821,7 +963,7 @@ async def run(session: ClientSession) -> None:
     return failed
 
 
-async def main() -> None:
+async def main() -> int:
     mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
     print(f"\nConnecting to MCP server at {mcp_url} ...")
 
@@ -830,8 +972,7 @@ async def main() -> None:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 print("Connected.\n")
-                failed = await run(session)
-                sys.exit(0 if failed == 0 else 1)
+                return await run(session)
     except Exception as e:
         print(f"ERROR: Could not connect to MCP server — {e}")
         print("Is the server running? Try: docker compose -f tests/docker-compose.yml up -d --build")
@@ -839,4 +980,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Exit after main() returns: a SystemExit raised inside the MCP client's async
+    # context managers is wrapped in a BaseExceptionGroup, so even a fully passing
+    # run exited with code 1.
+    sys.exit(0 if asyncio.run(main()) == 0 else 1)

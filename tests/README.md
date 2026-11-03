@@ -1,9 +1,9 @@
 # Tests
 
-Six automated scripts plus two manual LLM prompts:
+Seven automated scripts plus two manual LLM prompts:
 
-- **Three unit scripts** — no live infrastructure (`test_auth.py`, `test_client_retry.py`,
-  `test_recipe_model.py`)
+- **Four unit scripts** — no live infrastructure (`test_auth.py`, `test_client_retry.py`,
+  `test_recipe_model.py`, `test_tool_helpers.py`)
 - **Three integration scripts** — cover the MCP tools at two layers
   (`test_fetcher.py` direct, `test_mcp_server.py` via the MCP protocol) plus a focused
   create_recipe hardening check (`test_recipe_create_fix.py`)
@@ -18,7 +18,8 @@ then the manual LLM prompts:
 ```bash
 python tests/test_auth.py            # unit — no infra
 python tests/test_client_retry.py    # unit — no infra
-python tests/test_recipe_model.py    # unit — no infra (RecipeCreate model)
+python tests/test_recipe_model.py    # unit — no infra (RecipeCreate model, recipe times)
+python tests/test_tool_helpers.py    # unit — no infra (week alignment, lastMade fallback)
 python tests/test_fetcher.py         # integration — live Mealie
 docker compose -f tests/docker-compose.yml up -d --build
 python tests/test_mcp_server.py      # integration — live Mealie via MCP
@@ -73,8 +74,9 @@ python tests/test_mcp_server.py
 
 **What it tests:**
 - All 51 tools are registered (`session.list_tools()`)
-- Every tool can be called and returns a valid response
-- Full create → read → update cycle via MCP tool calls
+- Every tool can be called and succeeds (`isError` is false; failures print the error text)
+- Full create → read → update cycle via MCP tool calls, including Mealie v3.30 structured
+  recipe times, household `lastMade` and whole-week meal plan entries
 - Cleanup of test artifacts via direct fetcher calls (delete is not an MCP tool)
 
 **Requirements:**
@@ -142,6 +144,9 @@ python tests/test_recipe_model.py
 - Nutrition values normalize to bare numbers (`"1,200 mg"`→`"1200"`)
 - The FastMCP tool schema advertises canonical names + `additionalProperties: false`,
   and an unknown key returns an `isError` (retryable) result
+- Recipe times: text → seconds parsing ("1 hour 30 minutes", "90 min", "PT1H30M"),
+  bare numbers rejected, non-durations ("overnight") kept as text, seconds → readable text,
+  and the create payload storing seconds only
 
 **Requirements:**
 - None beyond the project's own dependencies
@@ -164,6 +169,24 @@ python tests/test_recipe_create_fix.py
 
 **Requirements:**
 - Same as Script 2 (`MCP_SERVER_URL` + a running server + Mealie creds)
+
+## Script 7 — Tool helpers (`test_tool_helpers.py`)
+
+Unit-tests tool logic against stand-in objects. Needs **no live infrastructure**.
+
+```bash
+python tests/test_tool_helpers.py
+```
+
+**What it tests:**
+- Whole-week meal plan entries align to every household `firstDayOfWeek` setting
+  (0=Sunday … 6=Saturday) and span exactly 7 days — the integration tests only see the
+  live household's own setting
+- `get_recipe_concise` / `get_recipe_detailed` return readable times and the household
+  `lastMade`, and still return the recipe when the `lastMade` lookup fails
+
+**Requirements:**
+- None beyond the project's own dependencies
 
 ## Manual — LLM integration prompt (`LLM_PROMPT.md`)
 

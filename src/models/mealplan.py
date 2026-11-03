@@ -1,3 +1,4 @@
+
 from typing import Optional
 
 from pydantic import BaseModel
@@ -8,3 +9,4 @@ class MealPlanEntry(BaseModel):
     recipe_id: Optional[str] = None
     title: Optional[str] = None
     entry_type: str = "breakfast"
+    whole_week: bool = False

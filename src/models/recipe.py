@@ -11,6 +11,8 @@ from pydantic import (
     model_validator,
 )
 
+from recipe_times import TIME_FIELDS, parse_duration
+
 logger = logging.getLogger("mealie-mcp")
 
 
@@ -95,12 +97,19 @@ class RecipeCreate(BaseModel):
         default_factory=list,
         validation_alias=AliasChoices("recipeInstructions", "instructions"),
     )
-    prepTime: Optional[str] = None  # plain text e.g. "30 minutes", "1 hour"
+    # Times: text with a unit ("30 minutes", "1 hour 30 minutes") or the *Seconds field.
+    # Either way they are stored as Mealie's structured seconds; see time_patch().
+    prepTime: Optional[str] = None
     # performTime is Mealie's active "Cook Time" field; accept the intuitive "cookTime".
     performTime: Optional[str] = Field(
         None, validation_alias=AliasChoices("performTime", "cookTime")
     )
-    totalTime: Optional[str] = None  # plain text e.g. "1 hour 30 minutes"
+    totalTime: Optional[str] = None
+    prepTimeSeconds: Optional[int] = Field(None, ge=0)
+    performTimeSeconds: Optional[int] = Field(
+        None, ge=0, validation_alias=AliasChoices("performTimeSeconds", "cookTimeSeconds")
+    )
+    totalTimeSeconds: Optional[int] = Field(None, ge=0)
     recipeServings: Optional[float] = Field(  # number of people served (e.g. 4)
         None, validation_alias=AliasChoices("recipeServings", "servings")
     )
@@ -124,6 +133,34 @@ class RecipeCreate(BaseModel):
         if isinstance(data, dict):
             logger.info({"message": "create_recipe raw input keys", "keys": sorted(data.keys())})
         return data
+
+    @field_validator("prepTime", "performTime", "totalTime")
+    @classmethod
+    def _reject_bare_number(cls, v: Optional[str]) -> Optional[str]:
+        """Fail loud on a unit-less time like "45" (minutes? hours?) at validation, so
+        the caller corrects it before any recipe is created."""
+        parse_duration(v)  # raises BareNumberError (a ValueError) for a bare number
+        return v
+
+    def time_patch(self) -> Dict[str, Any]:
+        """Mealie PATCH fields for the recipe times.
+
+        A duration is stored only as seconds, matching recipes Mealie migrated; the text
+        field is used only for a value that isn't a duration ("overnight"). An explicit
+        *Seconds value wins over text for the same time. Zero means no time.
+        """
+        patch: Dict[str, Any] = {}
+        for field in TIME_FIELDS:
+            seconds = getattr(self, f"{field}Seconds")
+            text = getattr(self, field)
+            if seconds is None and text:
+                seconds = parse_duration(text)
+                if seconds is None:
+                    patch[field] = text.strip()
+                    continue
+            if seconds:
+                patch[f"{field}Seconds"] = seconds
+        return patch
 
 
 class RecipeComment(BaseModel):

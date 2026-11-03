@@ -7,12 +7,22 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
 from models.recipe import Recipe, RecipeCreate
+from recipe_times import add_readable_times
 
 logger = logging.getLogger("mealie-mcp")
 
 
 def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     """Register all recipe-related tools with the MCP server."""
+
+    def add_last_made(slug: str, recipe: Dict[str, Any]) -> Dict[str, Any]:
+        """Set recipe["lastMade"] from the household's recipe data, where Mealie v3.29+
+        keeps it. A failed lookup is logged and skipped rather than failing the read."""
+        try:
+            recipe["lastMade"] = mealie.get_household_recipe(slug).get("lastMade")
+        except Exception as e:
+            logger.warning({"message": "Could not fetch lastMade", "slug": slug, "error": str(e)})
+        return recipe
 
     @mcp.tool()
     def get_recipes(
@@ -43,6 +53,8 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Returns:
             Dict[str, Any]: Recipe summaries with details like ID, name, description, and image information.
+                prepTime/performTime/totalTime are readable text ("1 hour 30 minutes");
+                the *TimeSeconds fields hold the same times as numbers for comparisons.
         """
         try:
             logger.info(
@@ -57,7 +69,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                     "require_all_categories": require_all_categories,
                 }
             )
-            return mealie.get_recipes(
+            result = mealie.get_recipes(
                 search=search,
                 page=page,
                 per_page=per_page,
@@ -66,6 +78,9 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 require_all_tags=require_all_tags,
                 require_all_categories=require_all_categories,
             )
+            for item in result.get("items", []):
+                add_readable_times(item)
+            return result
         except Exception as e:
             error_msg = f"Error fetching recipes: {str(e)}"
             logger.error({"message": error_msg})
@@ -85,11 +100,14 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Returns:
             Dict[str, Any]: Comprehensive recipe details including ingredients, instructions,
-                nutrition information, notes, and associated metadata.
+                nutrition information, notes, and associated metadata. prepTime/performTime/
+                totalTime are readable text; the *TimeSeconds fields hold the same times as
+                numbers. lastMade is the household's last made date (null if never made).
         """
         try:
             logger.info({"message": "Fetching recipe", "slug": slug})
-            return mealie.get_recipe(slug)
+            recipe_json = add_readable_times(mealie.get_recipe(slug))
+            return add_last_made(slug, recipe_json)
         except Exception as e:
             error_msg = f"Error fetching recipe with slug '{slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -112,7 +130,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Fetching recipe", "slug": slug})
-            recipe_json = mealie.get_recipe(slug)
+            recipe_json = add_last_made(slug, add_readable_times(mealie.get_recipe(slug)))
             recipe = Recipe.model_validate(recipe_json)
             return recipe.model_dump(
                 include={
@@ -285,8 +303,12 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
            recipeYield. Most people-fed dishes use recipeServings only and leave yield blank; set
            yield only when the output is a countable/measurable thing worth stating; set both only
            when the yield differs from portioning (e.g. yields 12 meatballs but serves 4).
-        6. Time: use plain human-readable strings — e.g. "30 minutes", "1 hour",
-           "1 hour 30 minutes". Never use ISO 8601 format.
+        6. Time: use human-readable strings WITH a unit — e.g. "30 minutes", "1 hour",
+           "1 hour 30 minutes". A bare number like "45" is rejected (minutes or hours?).
+           Alternatively pass prepTimeSeconds/performTimeSeconds/totalTimeSeconds as numbers
+           (e.g. copied from get_recipe_detailed). Times are stored as Mealie's structured
+           durations; a non-duration such as "overnight" is kept as text. Omit a time that
+           doesn't apply (e.g. no cook time) rather than sending "0 minutes".
         7. Nutrition: always populate every nutrition field (calories, carbohydrateContent,
            cholesterolContent, fatContent, fiberContent, proteinContent, saturatedFatContent,
            sodiumContent, sugarContent, transFatContent, unsaturatedFatContent). Enter
@@ -298,7 +320,8 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Use these EXACT field names (unknown fields are rejected, not ignored):
         recipeCategory, tags, tools, recipeIngredient, recipeInstructions, prepTime,
-        performTime (the cook/active time), totalTime, recipeServings,
+        performTime (the cook/active time), totalTime, prepTimeSeconds,
+        performTimeSeconds, totalTimeSeconds, recipeServings,
         recipeYieldQuantity, recipeYield, orgURL, nutrition, notes. Worked example:
 
             {
@@ -421,12 +444,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             }
             if recipe.description:
                 patch_data["description"] = recipe.description
-            if recipe.prepTime:
-                patch_data["prepTime"] = recipe.prepTime
-            if recipe.performTime:
-                patch_data["performTime"] = recipe.performTime
-            if recipe.totalTime:
-                patch_data["totalTime"] = recipe.totalTime
+            patch_data.update(recipe.time_patch())
             if recipe.recipeServings:
                 patch_data["recipeServings"] = recipe.recipeServings
             if recipe.recipeYieldQuantity:
@@ -442,7 +460,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 patch_data["notes"] = recipe.notes
 
             # Step 5: PATCH with full data
-            return mealie.patch_recipe(slug, patch_data)
+            return add_readable_times(mealie.patch_recipe(slug, patch_data))
         except Exception as e:
             error_msg = f"Error creating recipe '{recipe.name}': {str(e)}"
             logger.error({"message": error_msg})
@@ -463,7 +481,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Duplicating recipe", "slug": slug, "name": name})
-            return mealie.duplicate_recipe(slug, name=name)
+            return add_readable_times(mealie.duplicate_recipe(slug, name=name))
         except Exception as e:
             error_msg = f"Error duplicating recipe '{slug}': {str(e)}"
             logger.error({"message": error_msg})

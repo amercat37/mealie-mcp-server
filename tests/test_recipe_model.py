@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from pydantic import ValidationError
 
 from models.recipe import RecipeCreate, RecipeNutritionCreate
+from recipe_times import BareNumberError, add_readable_times, format_duration, parse_duration
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -126,6 +127,75 @@ def run() -> None:
     nd = n.model_dump(exclude_none=True)
     check("nutrition dump values are bare numbers",
           nd.get("carbohydrateContent") == "4.9" and nd.get("sodiumContent") == "1200")
+
+    # ------------------------------------------------------------------
+    section("Recipe times: parse text -> seconds")
+    # ------------------------------------------------------------------
+    for text, expected in [
+        ("30 minutes", 1800), ("1 minute", 60), ("1 hour", 3600), ("3 hours", 10800),
+        ("2 hours 45 minutes", 9900), ("1 hour and 30 minutes", 5400), ("1 hour, 30 minutes", 5400),
+        ("90 min", 5400), ("1.5 hrs", 5400), ("1h30m", 5400), ("2 days", 172800),
+        ("PT1H30M", 5400), ("pt45m", 2700), ("  20 Minutes ", 1200), ("0 minutes", 0),
+    ]:
+        got = parse_duration(text)
+        check(f"parse {text!r} -> {expected}", got == expected, str(got))
+    for text in ["overnight", "about 20 minutes", "30 minutes plus chilling", "varies",
+                 "30 minutes 1 hour", "1 hour 1 hour", "0.5 seconds", "", None]:
+        got = parse_duration(text)
+        check(f"parse {text!r} -> None (not a duration)", got is None, str(got))
+    for text in ["45", "3", "1.5"]:
+        try:
+            parse_duration(text)
+            check(f"parse {text!r} rejected (no unit)", False, "no error")
+        except BareNumberError as e:
+            check(f"parse {text!r} rejected (no unit)", "no unit" in str(e), str(e))
+
+    # ------------------------------------------------------------------
+    section("Recipe times: seconds -> readable text")
+    # ------------------------------------------------------------------
+    for seconds, expected in [(60, "1 minute"), (1800, "30 minutes"), (3600, "1 hour"),
+                              (5400, "1 hour 30 minutes"), (10800, "3 hours"),
+                              (90000, "1 day 1 hour")]:
+        check(f"format {seconds} -> {expected!r}", format_duration(seconds) == expected,
+              format_duration(seconds))
+    r = add_readable_times({"prepTime": None, "prepTimeSeconds": 3600,
+                            "performTime": "overnight", "performTimeSeconds": None,
+                            "totalTime": None, "totalTimeSeconds": None})
+    check("readable from seconds", r["prepTime"] == "1 hour" and r["prepTimeSeconds"] == 3600, str(r))
+    check("text-only time kept as-is", r["performTime"] == "overnight", str(r))
+    check("no time stays empty", r["totalTime"] is None, str(r))
+
+    # ------------------------------------------------------------------
+    section("Recipe times: create_recipe stores seconds (time_patch)")
+    # ------------------------------------------------------------------
+    tp = RecipeCreate.model_validate({
+        "name": "x", "prepTime": "10 minutes", "cookTime": "1 hour 30 minutes",
+        "totalTime": "overnight",
+    }).time_patch()
+    check("text durations stored as seconds only",
+          tp.get("prepTimeSeconds") == 600 and tp.get("performTimeSeconds") == 5400
+          and "prepTime" not in tp and "performTime" not in tp, str(tp))
+    check("non-duration stored as text only",
+          tp.get("totalTime") == "overnight" and "totalTimeSeconds" not in tp, str(tp))
+    tp = RecipeCreate.model_validate({
+        "name": "x", "prepTimeSeconds": 900, "cookTimeSeconds": 1200,
+        "totalTime": "35 minutes", "totalTimeSeconds": 2100,
+    }).time_patch()
+    check("*Seconds accepted (incl. cookTimeSeconds alias); seconds win over text",
+          tp == {"prepTimeSeconds": 900, "performTimeSeconds": 1200, "totalTimeSeconds": 2100}, str(tp))
+    tp = RecipeCreate.model_validate({"name": "x", "performTime": "0 minutes",
+                                      "totalTimeSeconds": 0}).time_patch()
+    check("zero time stored as no time", tp == {}, str(tp))
+    try:
+        RecipeCreate.model_validate({"name": "x", "prepTime": "45"})
+        check("bare-number time rejected at validation", False, "no error")
+    except ValidationError as e:
+        check("bare-number time rejected at validation", "no unit" in str(e), str(e)[:120])
+    try:
+        RecipeCreate.model_validate({"name": "x", "prepTimeSeconds": -5})
+        check("negative seconds rejected", False, "no error")
+    except ValidationError:
+        check("negative seconds rejected", True)
 
     # ------------------------------------------------------------------
     section("FastMCP tool schema + isError behavior")
