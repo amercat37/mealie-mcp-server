@@ -154,7 +154,7 @@ async def run(session) -> int:
     return failed
 
 
-async def main() -> None:
+async def main() -> int:
     mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
     print(f"\nConnecting to MCP server at {mcp_url} ...")
     try:
@@ -162,12 +162,14 @@ async def main() -> None:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 print("Connected.\n")
-                failed = await run(session)
-                sys.exit(0 if failed == 0 else 1)
+                return await run(session)
     except Exception as e:
         print(f"ERROR: Could not connect to MCP server — {e}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Exit after main() returns: a SystemExit raised inside the MCP client's async
+    # context managers is wrapped in a BaseExceptionGroup, so even a fully passing
+    # run exited with code 1.
+    sys.exit(0 if asyncio.run(main()) == 0 else 1)

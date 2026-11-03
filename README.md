@@ -41,6 +41,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 - **View & Create**: See all meal plans, today's menu, and add new entries
 - **Edit & Delete**: Update or remove individual meal plan entries
 - **Bulk Creation**: Add multiple meals at once
+- **Whole-Week Entries**: Plan a meal for "sometime this week" (Mealie v3.30+), aligned to the household's first day of week
 
 ### 💬 Prompts
 Six built-in conversation starters that pre-configure the assistant for specific tasks:
@@ -56,7 +57,9 @@ Six built-in conversation starters that pre-configure the assistant for specific
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- A running [Mealie](https://github.com/mealie-recipes/mealie) instance with an API key
+- A running [Mealie](https://github.com/mealie-recipes/mealie) instance, **v3.30.0 or later**, with an API key
+  (recipe times use Mealie's structured durations from v3.29 and whole-week meal plans from v3.30;
+  an older Mealie silently ignores them)
 - An [Authentik](https://goauthentik.io/) instance with a provider, app, and user configured (only required if using OAuth)
 
 ### Step 1 — Clone the repository

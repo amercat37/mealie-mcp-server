@@ -43,8 +43,11 @@ You have access to a Mealie recipe database. Connect to the MCP server and pull 
 - get_recipes: always set per_page=50; use null for empty values
 - get_recipe_concise: use by default for recipe details
 - get_recipe_detailed: only if the user explicitly asks for full details
-- get_all_mealplans: check existing plans before creating new ones
-- create_mealplan_bulk: save the approved plan (requires date YYYY-MM-DD, recipe_id, entry_type)
+- get_all_mealplans: check existing plans before creating new ones. An entry with an endDate is a
+  whole-week entry: planned for some day from date to endDate, not a specific day. Count it as
+  already planned for that week, but don't assign it to a particular day.
+- create_mealplan_bulk: save the approved plan (requires date YYYY-MM-DD, recipe_id, entry_type).
+  Set whole_week=true only if the user wants a meal "sometime this week" rather than on a day.
 - get_tags: use to resolve tag slugs before filtering
 - get_categories: use to resolve category slugs before filtering
 </context>
@@ -138,7 +141,8 @@ Day 2
         system_content = f"""
 <context>
 You have access to a Mealie MCP server. Use the following tools to build a shopping list:
-- get_all_mealplans: fetch the current week's meal plan
+- get_all_mealplans: fetch the current week's meal plan (pass start_date and end_date). An entry
+  with an endDate is a whole-week entry ("sometime this week"): include its recipe like any other.
 - get_recipe_detailed: fetch full ingredient lists for each recipe
 - get_labels: fetch available shopping list labels (grocery store sections)
 - get_shopping_lists: check for an existing shopping list to update
@@ -390,7 +394,8 @@ Ask the user for all required details conversationally. Collect:
 - Required cooking tools (match existing patterns)
 - Ingredients — for each: quantity, unit, food name, and any note
 - Instructions — numbered steps; use section headers if needed
-- Prep time, cook time, total time — plain text (e.g. "30 minutes", "1 hour", "1 hour 30 minutes")
+- Prep time, cook time, total time — text WITH a unit (e.g. "30 minutes", "1 hour", "1 hour 30 minutes");
+  never a bare number. Leave out a time that doesn't apply (e.g. no cook time) instead of "0 minutes"
 - Servings and yield — set only what fits the recipe (Mealie shows them separately):
     - recipeServings: number of people served (e.g. 4). Use this for most dishes.
     - recipeYieldQuantity + recipeYield: a produced amount — recipeYieldQuantity is the number

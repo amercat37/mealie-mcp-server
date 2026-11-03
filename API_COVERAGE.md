@@ -24,10 +24,10 @@ This document compares the MCP server implementation against the official Mealie
 
 **Implemented:**
 - ✅ `GET /api/recipes` - Search and filter the recipe library with pagination and advanced filtering
-- ✅ `GET /api/recipes/{slug}` - Fetch full recipe details including ingredients, instructions, and nutrition
-- ✅ `GET /api/recipes/{slug}` - Fetch a concise recipe summary (name, tags, categories, image only)
+- ✅ `GET /api/recipes/{slug}` - Fetch full recipe details including ingredients, instructions, and nutrition (readable times added from Mealie's structured seconds; `lastMade` from `GET /api/households/self/recipes/{slug}`)
+- ✅ `GET /api/recipes/{slug}` - Fetch a concise recipe summary (name, servings, yield, readable total time, rating, ingredients, `lastMade` from `GET /api/households/self/recipes/{slug}`)
 - ✅ `PATCH /api/recipes/{slug}/last-made` - Record today's date as the last time this recipe was made
-- ✅ `POST /api/recipes` + `PATCH /api/recipes/{slug}` - Create a fully populated recipe in one tool call (POST skeleton + PATCH all fields)
+- ✅ `POST /api/recipes` + `PATCH /api/recipes/{slug}` - Create a fully populated recipe in one tool call (POST skeleton + PATCH all fields; times stored as structured seconds)
 - ✅ `POST /api/recipes/{slug}/duplicate` - Clone a recipe under a new name
 
 **Not Implemented:**
@@ -111,10 +111,10 @@ This document compares the MCP server implementation against the official Mealie
 ### ✅ Meal Plans (6/7 implemented)
 
 **Implemented:**
-- ✅ `GET /api/households/mealplans` - List all meal plan entries across a date range
+- ✅ `GET /api/households/mealplans` - List all meal plan entries across a date range, including whole-week entries (`include_week_entries`)
 - ✅ `GET /api/households/mealplans/today` - Fetch all meal plan entries scheduled for today
-- ✅ `POST /api/households/mealplans` - Add a recipe to the meal plan on a specific date
-- ✅ `PUT /api/households/mealplans/{id}` - Update a meal plan entry's date or recipe assignment
+- ✅ `POST /api/households/mealplans` - Add a recipe to the meal plan on a specific date, or for a whole week (aligned via `GET /api/households/preferences` firstDayOfWeek)
+- ✅ `PUT /api/households/mealplans/{id}` - Update a meal plan entry's date or recipe assignment, or switch between day and whole-week
 - ✅ `DELETE /api/households/mealplans/{id}` - Remove an entry from the meal plan
 - ✅ Bulk creation via loop — create multiple meal plan entries by repeating single-entry creation
 

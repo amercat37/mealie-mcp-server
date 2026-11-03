@@ -133,6 +133,7 @@ celerybeat.pid
 tests/.env.*
 !.env.template
 !tests/.env.testing.template
+docker-compose.override.yml
 .venv
 env/
 venv/

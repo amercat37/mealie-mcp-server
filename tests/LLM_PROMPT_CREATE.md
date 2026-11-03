@@ -51,7 +51,9 @@ group**, quoting the value you got back:
 3. **all 5** ingredients present, each with its quantity + food (and unit where given) ← the bug emptied this
 4. ingredient 4's unit "slices" survived somewhere (structured unit **or** appended to the note) — not silently dropped
 5. **all 3** instructions present, in order              ← the bug emptied this
-6. prep / cook / total time all present (cook time not dropped) ← the bug dropped cook time
+6. prep / cook / total time all present (cook time not dropped) ← the bug dropped cook time.
+   They read back as "10 minutes" / "20 minutes" / "30 minutes" **and** are stored as
+   prepTimeSeconds 600 / performTimeSeconds 1200 / totalTimeSeconds 1800
 7. servings = 4
 8. yield renders as "2 cups" — `recipeYield` is the bare unit "cups", **no parenthetical**
 9. all 11 nutrition fields present as **bare numbers** (e.g. "12", not "12 g")
@@ -66,6 +68,8 @@ Then **STOP.** Do not delete the recipe — the human will remove `__test_llm_cr
 - Empty categories / ingredients / instructions, or missing cook time → the field-name silent-drop
   bug (create_recipe accepted a key it doesn't map and discarded it). Should be impossible once
   `extra="forbid"` + aliases are deployed.
+- Times readable but a *TimeSeconds field missing → create_recipe stored the time as legacy text
+  instead of Mealie's structured duration (Mealie v3.29+), so time filters and sorting skip it.
 - "slices" missing entirely → the unknown-unit path dropped it instead of preserving it in the note.
 - `recipeYield` contains a parenthetical, or nutrition values carry unit suffixes → the model
   ignored content guidance (a validator, not just the prompt, is what guarantees these).

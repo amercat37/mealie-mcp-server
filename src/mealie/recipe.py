@@ -176,6 +176,24 @@ class RecipeMixin:
         logger.info({"message": "Updating recipe last made", "slug": slug})
         return self._handle_request("PATCH", f"/api/recipes/{slug}/last-made", json=payload)
 
+    def get_household_recipe(self, slug: str) -> Dict[str, Any]:
+        """Get the current household's data for a recipe (e.g. lastMade).
+
+        Mealie v3.29+ keeps the last made date per household here instead of on the
+        recipe itself.
+
+        Args:
+            slug: The slug identifier of the recipe
+
+        Returns:
+            JSON response with recipeId and lastMade (null if never made)
+        """
+        if not slug:
+            raise ValueError("Recipe slug cannot be empty")
+
+        logger.info({"message": "Retrieving household recipe data", "slug": slug})
+        return self._handle_request("GET", f"/api/households/self/recipes/{slug}")
+
     def scrape_recipe_image_from_url(self, slug: str, image_url: str) -> Dict[str, Any]:
         """Scrape and set a recipe's image from a URL (JSON payload)
 

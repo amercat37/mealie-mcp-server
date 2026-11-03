@@ -23,6 +23,10 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     ) -> Dict[str, Any]:
         """Get all meal plans for the current household with pagination.
 
+        Includes whole-week entries: an entry with an endDate is planned for the week
+        from date to endDate rather than a specific day ("dinner sometime this week").
+        A week entry overlapping the date range is included.
+
         Args:
             start_date: Start date for filtering meal plans (ISO format YYYY-MM-DD)
             end_date: End date for filtering meal plans (ISO format YYYY-MM-DD)
@@ -62,6 +66,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         recipe_id: Optional[str] = None,
         title: Optional[str] = None,
         entry_type: str = "breakfast",
+        whole_week: bool = False,
     ) -> Dict[str, Any]:
         """Create a new meal plan entry.
 
@@ -70,6 +75,9 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             recipe_id: UUID of the recipe to add to the mealplan (optional)
             title: Title for the mealplan entry if not using a recipe (optional)
             entry_type: Type of mealplan entry (breakfast, lunch, dinner, side)
+            whole_week: Plan it for the whole week containing `date` instead of that
+                day ("dinner sometime this week"). The week follows the household's
+                first-day-of-week setting in Mealie.
 
         Returns:
             Dict[str, Any]: JSON response containing the created mealplan entry
@@ -82,6 +90,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                     "recipe_id": recipe_id,
                     "title": title,
                     "entry_type": entry_type,
+                    "whole_week": whole_week,
                 }
             )
             return mealie.create_mealplan(
@@ -89,6 +98,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 recipe_id=recipe_id,
                 title=title,
                 entry_type=entry_type,
+                whole_week=whole_week,
             )
         except Exception as e:
             error_msg = f"Error creating mealplan entry: {str(e)}"
@@ -110,6 +120,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 - recipe_id (str, optional): UUID of the recipe
                 - title (str, optional): Title for the entry
                 - entry_type (str, optional): Type of entry (breakfast, lunch, dinner, side)
+                - whole_week (bool, optional): Plan it for the whole week containing date
 
         Returns:
             Dict[str, Any]: JSON response with success message
@@ -140,15 +151,19 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         entry_type: str,
         recipe_id: Optional[str] = None,
         title: Optional[str] = None,
+        whole_week: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Update an existing meal plan entry's date, type, or recipe assignment.
 
         Args:
             entry_id: UUID of the meal plan entry to update
-            date: New date for the entry (YYYY-MM-DD)
+            date: New date for the entry (YYYY-MM-DD); for a week entry, any day in
+                the target week
             entry_type: Type of entry (breakfast, lunch, dinner, side)
             recipe_id: UUID of the recipe (optional)
             title: Title for non-recipe entries (optional)
+            whole_week: True makes it a whole-week entry, False a single-day entry;
+                omit to keep the entry's current kind
 
         Returns:
             Dict[str, Any]: The updated meal plan entry
@@ -161,6 +176,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 entry_type=entry_type,
                 recipe_id=recipe_id,
                 title=title,
+                whole_week=whole_week,
             )
         except Exception as e:
             error_msg = f"Error updating mealplan entry '{entry_id}': {str(e)}"
@@ -190,6 +206,9 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     @mcp.tool()
     def get_todays_mealplan() -> List[Dict[str, Any]]:
         """Get the mealplan entries for today.
+
+        Whole-week entries are not included (they aren't planned for a specific day);
+        use get_all_mealplans with today's date to also see this week's week entries.
 
         Returns:
             List[Dict[str, Any]]: List of today's mealplan entries

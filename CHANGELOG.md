@@ -4,6 +4,39 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.23] — 2026-11-03
+
+Compatibility with **Mealie v3.30.0** (upgraded from v3.16.0). **Now requires Mealie v3.30.0 or later.**
+
+### Changed
+
+- **Recipe times use Mealie's structured durations.** Mealie v3.29 added `prepTimeSeconds` / `performTimeSeconds` / `totalTimeSeconds`, and its upgrade migration moved every parseable text time into them and blanked the legacy text fields — so `get_recipe_concise` lost its time and the other read tools returned `null` times.
+  - New `src/recipe_times.py` converts between the two formats.
+  - `get_recipes`, `get_recipe_detailed`, `get_recipe_concise`, `create_recipe` and `duplicate_recipe` fill `prepTime` / `performTime` / `totalTime` with readable text built from the seconds (`10800` → `"3 hours"`). A text-only value such as `"overnight"` is returned as stored. The list and detailed tools keep the `*TimeSeconds` numbers too.
+  - `create_recipe` stores a duration only as seconds, matching migrated recipes, and keeps the legacy text field only for a non-duration such as `"overnight"`. It accepts text with a unit (`"1 hour 30 minutes"`, `"90 min"`, `"PT1H30M"`) or the `*TimeSeconds` fields (`cookTimeSeconds` is accepted as an alias). A zero time is stored as no time.
+  - `create_recipe` **rejects a bare number** such as `"45"` (minutes or hours?) with a validation error asking for a unit, before anything is created.
+- **`lastMade` restored.** Mealie v3.29 removed it from the recipe and keeps it per household. `get_recipe_detailed` and `get_recipe_concise` now read it from `GET /api/households/self/recipes/{slug}`; a failed lookup is logged and skipped instead of failing the read.
+- **Whole-week meal plan entries** (Mealie v3.30). Mealie hides them from API clients unless asked.
+  - `get_all_mealplans` now includes them (`include_week_entries`); a week entry overlapping the date range is returned.
+  - `create_mealplan`, `create_mealplan_bulk` and `update_mealplan` take `whole_week`. A week entry is aligned to the household's first-day-of-week preference and ends six days later, as Mealie requires. `update_mealplan` recomputes both ends when the date moves; `whole_week` omitted keeps the entry's current kind.
+  - `get_todays_mealplan` is unchanged: Mealie excludes week entries from "today".
+  - The `weekly_meal_plan` and `shopping_trip` prompts explain week entries.
+- `pyproject.toml` — pin `mcp[cli]<2`. mcp 2.x renamed `FastMCP`, so an unpinned rebuild would install 2.x and the server would crash on startup.
+
+### Fixed
+
+- `get_all_mealplans` date filtering never worked: the server sent `startDate` / `endDate`, which Mealie ignores (it reads `start_date` / `end_date`), so every entry was returned regardless of the range.
+
+### Tests
+
+- `tests/test_mcp_server.py` — 29 checks only tested that a result had content, which an `isError` result also has, so a failing tool passed. They now require `not isError` and print the error text. The empty-list `delete_shopping_list_items_bulk` check (which ended in `or True`) now requires the "cannot be empty" error. Added checks for structured times, readable times in all three read tools, bare-number rejection, `lastMade`, week entries (create, list overlap, move, convert, bulk) and the date filter.
+- `tests/test_recipe_model.py` — unit tests for time parsing, formatting and the create payload.
+- `tests/test_tool_helpers.py` (new, no live infrastructure) — whole-week alignment for every `firstDayOfWeek` setting, and the recipe read tools when the `lastMade` lookup fails. `tests/README.md` documents it.
+- `tests/test_mcp_server.py`, `tests/test_recipe_create_fix.py` — exit with code 0 on a passing run (the `SystemExit` was raised inside the MCP client's async context and wrapped in an exception group, so every run exited 1).
+- `tests/LLM_PROMPT_CREATE.md` — time group also checks the stored `*TimeSeconds` values.
+
+---
+
 ## [1.0.22] — 2026-07-22
 
 ### Fixed
