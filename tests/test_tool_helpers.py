@@ -5,6 +5,7 @@ No live infrastructure — exercises logic against stand-in objects:
 - whole-week meal plan alignment for every household firstDayOfWeek setting
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
+- shopping list tools trimming recipeReferences
 
 Usage:
     cd mealie-mcp-server
@@ -23,6 +24,7 @@ from mcp.server.fastmcp import FastMCP
 
 from mealie.mealplan import MealplanMixin
 from tools.recipe_tools import register_recipe_tools
+from tools.shopping_list_tools import register_shopping_list_tools
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -69,6 +71,48 @@ class FakeRecipes:
         if self.last_made_error:
             raise ConnectionError("household lookup failed")
         return {"recipeId": "1", "lastMade": "2026-11-01T18:00:00Z"}
+
+
+FULL_LIST = {
+    "id": "L1", "name": "Groceries", "listItems": [], "labelSettings": [],
+    "recipeReferences": [{
+        "id": "ref1", "shoppingListId": "L1", "recipeId": "R1", "recipeQuantity": 2.0,
+        "recipe": {"id": "R1", "name": "Chili Sauce", "slug": "chili-sauce",
+                   "description": "long text", "tags": [{"name": "t", "recipeCount": 0}]},
+    }],
+}
+
+
+class FakeShopping:
+    """Stands in for MealieFetcher in the shopping list tools; records what it was sent."""
+
+    def __init__(self):
+        self.sent = []
+
+    def get_shopping_lists(self, page=None, per_page=None):
+        return {"page": 1, "total": 1, "items": [FULL_LIST]}
+
+    def get_shopping_list(self, list_id):
+        return FULL_LIST
+
+    def create_shopping_list(self, name):
+        return FULL_LIST
+
+    def update_shopping_list(self, list_id, data):
+        self.sent.append(data)
+        return FULL_LIST
+
+    def delete_shopping_list(self, list_id):
+        return FULL_LIST
+
+    def add_recipe_to_shopping_list(self, list_id, recipe_id, qty):
+        return FULL_LIST
+
+    def remove_recipe_from_shopping_list(self, list_id, recipe_id):
+        return FULL_LIST
+
+    def add_recipes_to_shopping_list_bulk(self, list_id, recipes):
+        return FULL_LIST
 
 
 def call(srv: FastMCP, tool: str, args: dict) -> dict:
@@ -129,6 +173,32 @@ def run() -> None:
               d.get("name") == "Chili Sauce" and d.get("totalTime") == "3 hours", str(d))
     except Exception as e:
         check("detailed: failed lastMade lookup still returns the recipe", False, repr(e))
+
+    # ------------------------------------------------------------------
+    section("Shopping list tools trim recipeReferences")
+    # ------------------------------------------------------------------
+    trimmed = [{"recipeId": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "recipeQuantity": 2.0}]
+    fake = FakeShopping()
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    for tool, args in [
+        ("get_shopping_list", {"list_id": "L1"}),
+        ("create_shopping_list", {"name": "Groceries"}),
+        ("update_shopping_list", {"list_id": "L1", "name": "Groceries"}),
+        ("delete_shopping_list", {"list_id": "L1"}),
+        ("add_recipe_to_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
+        ("remove_recipe_from_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
+        ("add_recipes_to_shopping_list_bulk", {"list_id": "L1", "recipes": [{"recipeId": "R1"}]}),
+    ]:
+        out = call(srv, tool, args)
+        check(f"{tool}: recipeReferences trimmed", out.get("recipeReferences") == trimmed,
+              str(out.get("recipeReferences"))[:120])
+    out = call(srv, "get_shopping_lists", {})
+    check("get_shopping_lists: every list's recipeReferences trimmed",
+          [i.get("recipeReferences") for i in out.get("items", [])] == [trimmed], str(out)[:120])
+    check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
+          fake.sent == [{"name": "Groceries"}], str(fake.sent))
+    check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
 
     # ------------------------------------------------------------------
     section("Summary")

@@ -732,6 +732,18 @@ async def run(session: ClientSession) -> None:
                 except Exception as e:
                     check(tool, False, str(e))
 
+            # Recipe references are trimmed to identify the recipe, not embed it
+            try:
+                r = await session.call_tool("get_shopping_list", {"list_id": lid})
+                refs = _json.loads(r.content[0].text).get("recipeReferences", []) if not r.isError else []
+                check("get_shopping_list recipeReferences trimmed to recipeId/name/slug/recipeQuantity",
+                      bool(refs) and all(set(ref) == {"recipeId", "name", "slug", "recipeQuantity"}
+                                         and ref["recipeId"] == rid and ref["slug"] == slug for ref in refs),
+                      str(refs)[:200] if refs else error_text(r) or "no recipeReferences")
+            except Exception as e:
+                check("get_shopping_list recipeReferences trimmed to recipeId/name/slug/recipeQuantity",
+                      False, str(e))
+
         try:
             r = await session.call_tool("delete_shopping_list_items_bulk", {
                 "item_ids": []

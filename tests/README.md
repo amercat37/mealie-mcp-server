@@ -19,7 +19,7 @@ then the manual LLM prompts:
 python tests/test_auth.py            # unit — no infra
 python tests/test_client_retry.py    # unit — no infra
 python tests/test_recipe_model.py    # unit — no infra (RecipeCreate model, recipe times)
-python tests/test_tool_helpers.py    # unit — no infra (week alignment, lastMade fallback)
+python tests/test_tool_helpers.py    # unit — no infra (week alignment, lastMade fallback, tool output shapes)
 python tests/test_fetcher.py         # integration — live Mealie
 docker compose -f tests/docker-compose.yml up -d --build
 python tests/test_mcp_server.py      # integration — live Mealie via MCP
@@ -184,6 +184,8 @@ python tests/test_tool_helpers.py
   live household's own setting
 - `get_recipe_concise` / `get_recipe_detailed` return readable times and the household
   `lastMade`, and still return the recipe when the `lastMade` lookup fails
+- Every shopping list tool that returns a whole list trims `recipeReferences` to
+  `recipeId`, `name`, `slug`, `recipeQuantity`
 
 **Requirements:**
 - None beyond the project's own dependencies

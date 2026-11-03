@@ -4,6 +4,21 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.24] — 2026-11-03
+
+Follow-ups from the v1.0.23 assistant test runs.
+
+### Changed
+
+- **Shopping lists no longer embed whole recipes.** Each `recipeReferences` entry carried a full recipe summary (description, tags, categories, times…) — most of the list's size, and the times showed as `null`. Every tool that returns a whole list (`get_shopping_lists`, `get_shopping_list`, `create_shopping_list`, `update_shopping_list`, `delete_shopping_list`, `add_recipe_to_shopping_list`, `remove_recipe_from_shopping_list`, `add_recipes_to_shopping_list_bulk`) now returns `{recipeId, name, slug, recipeQuantity}` per recipe. Only the tool output is trimmed; the rename still sends Mealie the full list.
+
+### Tests
+
+- `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
+- `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
+
+---
+
 ## [1.0.23] — 2026-11-03
 
 Compatibility with **Mealie v3.30.0** (upgraded from v3.16.0). **Now requires Mealie v3.30.0 or later.**
