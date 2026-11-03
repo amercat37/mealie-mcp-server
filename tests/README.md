@@ -1,14 +1,15 @@
 # Tests
 
-Seven automated scripts plus two manual LLM prompts:
+Seven automated scripts plus three manual LLM prompts:
 
 - **Four unit scripts** — no live infrastructure (`test_auth.py`, `test_client_retry.py`,
   `test_recipe_model.py`, `test_tool_helpers.py`)
 - **Three integration scripts** — cover the MCP tools at two layers
   (`test_fetcher.py` direct, `test_mcp_server.py` via the MCP protocol) plus a focused
   create_recipe hardening check (`test_recipe_create_fix.py`)
-- **Two manual LLM prompts** — `LLM_PROMPT.md` (read-only, every read tool) and
-  `LLM_PROMPT_CREATE.md` (mutating — one recipe create, verified per-field)
+- **Three manual LLM prompts** — `LLM_PROMPT.md` (read-only, every read tool),
+  `LLM_PROMPT_CREATE.md` (mutating — one recipe create, verified per-field) and
+  `LLM_PROMPT_WRITE.md` (mutating, self-cleaning — shopping list and meal plan writes)
 
 ## Recommended run order
 
@@ -27,6 +28,7 @@ python tests/test_recipe_create_fix.py   # integration — create_recipe hardeni
 docker compose -f tests/docker-compose.yml down
 # then paste tests/LLM_PROMPT.md (read-only) into Claude/ChatGPT with the MCP server connected
 # and, after the create_recipe fix is deployed, tests/LLM_PROMPT_CREATE.md (mutating — delete its recipe after)
+# and tests/LLM_PROMPT_WRITE.md (mutating — deletes everything it creates)
 ```
 
 > The integration scripts create and delete real recipes/foods/lists/meal plans.
@@ -229,6 +231,25 @@ that automated tests can't — a real model choosing field names → the deploye
 - **Creates one recipe (`__test_llm_create__`) and does not delete it** — remove it in
   the Mealie UI when finished.
 
+## Manual — LLM write test (`LLM_PROMPT_WRITE.md`)
+
+Not a script, and **mutating**, but self-cleaning. Paste the body into Claude or ChatGPT
+with the MCP server connected. It has the model run 22 steps across the shopping list and
+meal plan write tools — chaining ids between calls — and report PASS/FAIL per step.
+
+**What it tests:**
+- Shopping lists: create, rename, items (single and bulk), adding/removing recipes with
+  trimmed `recipeReferences`, reordering sections by label name, and rejecting an unknown
+  label name without changing anything
+- Meal plans: create and update (passing the id as a number), whole-week entries, the date
+  filter, bulk create returning ids, and a bulk batch with one bad entry creating nothing
+
+**Requirements:**
+- The MCP server connected to an LLM client
+- Everything is `__test_llm_`-named, meal plans use 2099 dates, and the model deletes all of
+  it — check the final step's confirmation that nothing is left. Only the test list's section
+  order is changed; your own lists are untouched.
+
 ## Test naming convention
 
 All test artifacts use `__test_*` naming so they are visually obvious in the Mealie UI.
@@ -243,6 +264,7 @@ The integration scripts delete every one of these within a single run:
 | Unknown-unit recipe | `__test_recipe_unknown_unit__` → slug `test-recipe-unknown-unit` |
 | create_recipe-fix recipes | `__test_fix_friendly__` / `__test_fix_bad__` (Script 6) |
 | LLM create acceptance recipe | `__test_llm_create__` (manual — delete yourself) |
+| LLM write test list, items, meal plans | `__test_llm_*`, meal plans in March 2099 (the prompt deletes them) |
 | Food A / B | `__test_food_a__` / `__test_food_b__` |
 | Auto-created food | `__test_auto_food__` |
 | Unknown-unit foods | `__test_food_uu_a__` / `__test_food_uu_b__` |

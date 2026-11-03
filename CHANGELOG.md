@@ -25,6 +25,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 
 ### Tests
 
+- `tests/LLM_PROMPT_WRITE.md` (new) — the shopping list and meal plan write prompt from the v1.0.23 assistant runs, saved and updated for this release: trimmed recipe references, reordering by label name and the unknown-name rejection, a numeric `entry_id`, bulk create ids and a rejected bulk batch. It deletes everything it creates. `tests/README.md` documents it.
 - `tests/LLM_PROMPT_CREATE.md` — the unknown-unit check had stopped testing anything: "slices" was added to the unit catalog, so it resolved as a normal unit and passed. Ingredient 4 is now "2 rashers bacon", sent exactly as given, and a `get_units` pre-check makes the group report NOT TESTED instead of a false PASS if "rashers" is ever added.
 - `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
 - `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
