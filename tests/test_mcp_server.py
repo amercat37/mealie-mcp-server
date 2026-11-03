@@ -324,6 +324,17 @@ async def run(session: ClientSession) -> None:
             # Couldn't parse structured ingredients — assert the text at least survived
             check("unknown unit text preserved somewhere in recipe",
                   "__test_unknown_unit__" in dtext, dtext[:120])
+
+        # Ingredient ids must be stored: Mealie makes up a new random one on every read
+        # for an ingredient saved without one, so the create response and two reads
+        # would all disagree
+        reread = await session.call_tool("get_recipe_detailed", {"slug": "test-recipe-unknown-unit"})
+        created_refs = [i.get("referenceId") for i in _json.loads(text).get("recipeIngredient", [])]
+        read_refs = [i.get("referenceId") for i in _json.loads(dtext).get("recipeIngredient", [])]
+        reread_refs = [i.get("referenceId") for i in _json.loads(reread.content[0].text).get("recipeIngredient", [])]
+        check("create_recipe ingredient referenceIds are stored (create and two reads agree)",
+              bool(read_refs) and created_refs == read_refs == reread_refs,
+              f"created={created_refs} read={read_refs} reread={reread_refs}")
     except Exception as e:
         check("create_recipe accepts unknown unit", False, str(e))
 

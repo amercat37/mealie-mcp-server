@@ -20,6 +20,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 
 ### Fixed
 
+- **`create_recipe` ingredient ids changed on every read.** Ingredients were sent without a `referenceId`; Mealie stores none and makes up a new random one each time the recipe is read, so the create response and every later read disagreed (an assistant comparing them flagged it). `create_recipe` now sends an id per ingredient, as Mealie's own editor does, so it is stored and stays the same. Recipes saved in the Mealie editor were never affected.
 - `update_mealplan` / `delete_mealplan` typed `entry_id` as text, but meal plan ids are numbers, so passing the id exactly as `create_mealplan` / `get_all_mealplans` returned it (`12`) failed validation and the assistant had to retry with `"12"`. Both now accept a number or text.
 
 ### Tests
@@ -27,6 +28,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 - `tests/LLM_PROMPT_CREATE.md` — the unknown-unit check had stopped testing anything: "slices" was added to the unit catalog, so it resolved as a normal unit and passed. Ingredient 4 is now "2 rashers bacon", sent exactly as given, and a `get_units` pre-check makes the group report NOT TESTED instead of a false PASS if "rashers" is ever added.
 - `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
 - `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
+- `tests/test_mcp_server.py` — `create_recipe`'s ingredient `referenceId`s match two later reads.
 - `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.
 - `tests/test_tool_helpers.py` — label reordering: order, payload fields, case and duplicate handling, id fallback, unknown and empty input send nothing.
 - `tests/test_tool_helpers.py` — trimmed meal plan entries, each pre-create check, and the partial-failure report.

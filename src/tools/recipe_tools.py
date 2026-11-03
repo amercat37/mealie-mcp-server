@@ -1,5 +1,6 @@
 import logging
 import traceback
+import uuid
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -393,7 +394,10 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
             resolved_ingredients = []
             for ing in recipe.recipeIngredient:
-                resolved: Dict[str, Any] = {}
+                # Mealie stores an ingredient sent without a referenceId with none,
+                # then makes up a new random one on every read. Send one, as Mealie's
+                # own editor does, so the id is stored and stays the same.
+                resolved: Dict[str, Any] = {"referenceId": str(uuid.uuid4())}
                 if ing.title:
                     resolved["title"] = ing.title
                 if ing.quantity is not None:
