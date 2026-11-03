@@ -12,10 +12,15 @@ Follow-ups from the v1.0.23 assistant test runs.
 
 - **Shopping lists no longer embed whole recipes.** Each `recipeReferences` entry carried a full recipe summary (description, tags, categories, times…) — most of the list's size, and the times showed as `null`. Every tool that returns a whole list (`get_shopping_lists`, `get_shopping_list`, `create_shopping_list`, `update_shopping_list`, `delete_shopping_list`, `add_recipe_to_shopping_list`, `remove_recipe_from_shopping_list`, `add_recipes_to_shopping_list_bulk`) now returns `{recipeId, name, slug, recipeQuantity}` per recipe. Only the tool output is trimmed; the rename still sends Mealie the full list.
 
+### Fixed
+
+- `update_mealplan` / `delete_mealplan` typed `entry_id` as text, but meal plan ids are numbers, so passing the id exactly as `create_mealplan` / `get_all_mealplans` returned it (`12`) failed validation and the assistant had to retry with `"12"`. Both now accept a number or text.
+
 ### Tests
 
 - `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
 - `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
+- `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.
 
 ---
 

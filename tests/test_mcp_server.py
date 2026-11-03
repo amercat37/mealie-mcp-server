@@ -798,16 +798,17 @@ async def run(session: ClientSession) -> None:
     if state.get("mealplan_id"):
         mid = state["mealplan_id"]
         try:
+            # Meal plan ids are numbers; the tools take them as a number or as text
             r = await session.call_tool("update_mealplan", {
-                "entry_id": mid, "date": "2099-01-02", "entry_type": "dinner"
+                "entry_id": int(mid), "date": "2099-01-02", "entry_type": "dinner"
             })
-            check_tool("update_mealplan", r)
+            check_tool("update_mealplan (numeric entry_id)", r)
         except Exception as e:
-            check("update_mealplan", False, str(e))
+            check("update_mealplan (numeric entry_id)", False, str(e))
 
         try:
-            r = await session.call_tool("delete_mealplan", {"entry_id": mid})
-            check_tool("delete_mealplan", r)
+            r = await session.call_tool("delete_mealplan", {"entry_id": str(mid)})
+            check_tool("delete_mealplan (text entry_id)", r)
             state["mealplan_id"] = None
         except Exception as e:
             check("delete_mealplan", False, str(e))
@@ -863,8 +864,8 @@ async def run(session: ClientSession) -> None:
             check("update_mealplan whole_week=False makes a day entry",
                   day.get("date") == "2099-01-21" and not day.get("endDate"),
                   error_text(r) if r.isError else f"date={day.get('date')} endDate={day.get('endDate')}")
-            r = await session.call_tool("delete_mealplan", {"entry_id": str(wid)})
-            check_tool("delete_mealplan (week entry)", r)
+            r = await session.call_tool("delete_mealplan", {"entry_id": wid})
+            check_tool("delete_mealplan (week entry, numeric entry_id)", r)
     except Exception as e:
         check("whole-week meal plan entries", False, str(e))
 

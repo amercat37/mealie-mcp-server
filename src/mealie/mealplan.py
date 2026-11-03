@@ -1,7 +1,7 @@
 import logging
 from datetime import date as Date
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from utils import format_api_params
 
@@ -136,7 +136,7 @@ class MealplanMixin:
 
     def update_mealplan(
         self,
-        entry_id: str,
+        entry_id: Union[int, str],
         date: str,
         entry_type: str,
         recipe_id: Optional[str] = None,
@@ -146,7 +146,7 @@ class MealplanMixin:
         """Update an existing mealplan entry.
 
         Args:
-            entry_id: UUID of the mealplan entry to update
+            entry_id: Numeric id of the mealplan entry to update
             date: New date for the entry (YYYY-MM-DD)
             entry_type: Type of entry (breakfast, lunch, dinner, side)
             recipe_id: UUID of the recipe (optional)
@@ -178,11 +178,11 @@ class MealplanMixin:
         merged = {**current, **updates}
         return self._handle_request("PUT", f"/api/households/mealplans/{entry_id}", json=merged)
 
-    def delete_mealplan(self, entry_id: str) -> Dict[str, Any]:
+    def delete_mealplan(self, entry_id: Union[int, str]) -> Dict[str, Any]:
         """Delete a mealplan entry.
 
         Args:
-            entry_id: UUID of the mealplan entry to delete
+            entry_id: Numeric id of the mealplan entry to delete
 
         Returns:
             JSON response confirming deletion

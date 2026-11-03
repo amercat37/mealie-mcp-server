@@ -1,6 +1,6 @@
 import logging
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -146,7 +146,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
     @mcp.tool()
     def update_mealplan(
-        entry_id: str,
+        entry_id: Union[int, str],
         date: str,
         entry_type: str,
         recipe_id: Optional[str] = None,
@@ -156,7 +156,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """Update an existing meal plan entry's date, type, or recipe assignment.
 
         Args:
-            entry_id: UUID of the meal plan entry to update
+            entry_id: The numeric id of the meal plan entry, from get_all_mealplans or
+                create_mealplan
             date: New date for the entry (YYYY-MM-DD); for a week entry, any day in
                 the target week
             entry_type: Type of entry (breakfast, lunch, dinner, side)
@@ -185,11 +186,12 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             raise ToolError(error_msg)
 
     @mcp.tool()
-    def delete_mealplan(entry_id: str) -> Dict[str, Any]:
+    def delete_mealplan(entry_id: Union[int, str]) -> Dict[str, Any]:
         """Delete a meal plan entry.
 
         Args:
-            entry_id: UUID of the meal plan entry to delete
+            entry_id: The numeric id of the meal plan entry, from get_all_mealplans or
+                create_mealplan
 
         Returns:
             Dict[str, Any]: Confirmation of deletion
