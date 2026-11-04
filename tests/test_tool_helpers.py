@@ -148,7 +148,7 @@ class FakeMealplanCreate:
     def __init__(self):
         self.created = []
 
-    def create_mealplan(self, date, recipe_id=None, title=None, entry_type="breakfast", whole_week=False):
+    def create_mealplan(self, date, entry_type, recipe_id=None, title=None, whole_week=False):
         if title == "boom":
             raise ConnectionError("Mealie unavailable")
         entry = {"id": len(self.created) + 1, "date": date, "endDate": None, "entryType": entry_type,
@@ -309,23 +309,30 @@ def run() -> None:
     before = len(fake.created)
     for name, entry, expect in [
         ("bad entry_type", {"date": "2099-03-06", "title": "x", "entry_type": "brunch"}, "brunch"),
-        ("bad date", {"date": "03/06/2099", "title": "x"}, "YYYY-MM-DD"),
-        ("no recipe or title", {"date": "2099-03-06"}, "recipe_id or a title"),
-        ("recipe_id not a UUID", {"date": "2099-03-06", "recipe_id": "chili-sauce"}, "not a recipe UUID"),
+        ("bad date", {"date": "03/06/2099", "title": "x", "entry_type": "dinner"}, "YYYY-MM-DD"),
+        ("no recipe or title", {"date": "2099-03-06", "entry_type": "dinner"}, "recipe_id or a title"),
+        ("recipe_id not a UUID", {"date": "2099-03-06", "recipe_id": "chili-sauce", "entry_type": "dinner"},
+         "not a recipe UUID"),
         ("unknown key", {"date": "2099-03-06", "title": "x", "entryType": "dinner"}, "entryType"),
+        ("missing entry_type", {"date": "2099-03-06", "title": "x"}, 'missing "entry_type" (one of: breakfast'),
     ]:
         err = call_error(srv, "create_mealplan_bulk", {"entries": [
-            {"date": "2099-03-06", "title": "fine"}, entry]})
+            {"date": "2099-03-06", "title": "fine", "entry_type": "dinner"}, entry]})
         check(f"bulk {name}: rejected, names entry 2, nothing created",
               expect in err and "entry 2" in err and "nothing was created" in err
               and len(fake.created) == before, err[-160:])
     err = call_error(srv, "create_mealplan", {"date": "2099-03-06", "title": "x", "entry_type": "brunch"})
     check("create_mealplan rejects a bad entry_type before creating",
           "brunch" in err and len(fake.created) == before, err[-120:])
+    err = call_error(srv, "create_mealplan", {"date": "2099-03-06", "title": "x"})
+    check("create_mealplan requires entry_type (no breakfast default)",
+          "entry_type" in err and len(fake.created) == before, err[-120:])
 
     err = call_error(srv, "create_mealplan_bulk", {"entries": [
-        {"date": "2099-03-08", "title": "a"}, {"date": "2099-03-09", "title": "b"},
-        {"date": "2099-03-10", "title": "boom"}, {"date": "2099-03-11", "title": "d"},
+        {"date": "2099-03-08", "title": "a", "entry_type": "dinner"},
+        {"date": "2099-03-09", "title": "b", "entry_type": "dinner"},
+        {"date": "2099-03-10", "title": "boom", "entry_type": "dinner"},
+        {"date": "2099-03-11", "title": "d", "entry_type": "dinner"},
     ]})
     check("bulk partial failure: reports created ids, the failed entry and what was not attempted",
           f"Created 2 of 4 entries (ids {before + 1}, {before + 2})" in err

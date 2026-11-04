@@ -74,18 +74,18 @@ class MealplanMixin:
     def create_mealplan(
         self,
         date: str,
+        entry_type: str,
         recipe_id: Optional[str] = None,
         title: Optional[str] = None,
-        entry_type: str = "breakfast",
         whole_week: bool = False,
     ) -> Dict[str, Any]:
         """Create a new mealplan entry.
 
         Args:
             date: Date for the mealplan in ISO format (YYYY-MM-DD)
+            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side, snack, drink, dessert)
             recipe_id: UUID of the recipe to add to the mealplan (optional)
             title: Title for the mealplan entry if not using a recipe (optional)
-            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side, snack, drink, dessert)
             whole_week: Plan it for the whole week containing `date` rather than that day
 
         Returns:

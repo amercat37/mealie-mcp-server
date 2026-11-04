@@ -11,5 +11,6 @@ class MealPlanEntry(BaseModel):
     date: str
     recipe_id: Optional[str] = None
     title: Optional[str] = None
-    entry_type: str = "breakfast"
+    # Required: a missing type would otherwise quietly become breakfast
+    entry_type: str
     whole_week: bool = False

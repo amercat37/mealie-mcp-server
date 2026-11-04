@@ -34,6 +34,18 @@ def entry_problem(entry: MealPlanEntry) -> Optional[str]:
     return None
 
 
+def field_error(err: Dict[str, Any]) -> str:
+    """A pydantic error on a bulk entry, worded for the assistant."""
+    field = err["loc"][0] if err["loc"] else "entry"
+    if err["type"] == "extra_forbidden":
+        return f'unknown field "{field}" (fields are: {", ".join(MealPlanEntry.model_fields)})'
+    if err["type"] == "missing":
+        if field == "entry_type":
+            return f'missing "entry_type" (one of: {", ".join(ENTRY_TYPES)})'
+        return f'missing "{field}"'
+    return f"{'.'.join(str(part) for part in err['loc']) or 'entry'}: {err['msg']}"
+
+
 def summarize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     """A created meal plan entry without the embedded recipe summary."""
     summary: Dict[str, Any] = {"id": entry.get("id"), "date": entry.get("date")}
@@ -102,19 +114,19 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     @mcp.tool()
     def create_mealplan(
         date: str,
+        entry_type: str,
         recipe_id: Optional[str] = None,
         title: Optional[str] = None,
-        entry_type: str = "breakfast",
         whole_week: bool = False,
     ) -> Dict[str, Any]:
         """Create a new meal plan entry.
 
         Args:
             date: Date for the mealplan in ISO format (YYYY-MM-DD)
+            entry_type: Type of mealplan entry, required (breakfast, lunch, dinner,
+                side, snack, drink, dessert). If the user didn't say which meal, ask.
             recipe_id: UUID of the recipe to add to the mealplan (optional)
             title: Title for the mealplan entry if not using a recipe (optional)
-            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side, snack,
-                drink, dessert)
             whole_week: Plan it for the whole week containing `date` instead of that
                 day ("dinner sometime this week"). The week follows the household's
                 first-day-of-week setting in Mealie.
@@ -166,7 +178,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 - date (str): Date in ISO format (YYYY-MM-DD)
                 - recipe_id (str, optional): UUID of the recipe
                 - title (str, optional): Title for the entry
-                - entry_type (str, optional): Type of entry (breakfast, lunch, dinner,
+                - entry_type (str, required): Type of entry (breakfast, lunch, dinner,
                   side, snack, drink, dessert)
                 - whole_week (bool, optional): Plan it for the whole week containing date
 
@@ -190,13 +202,7 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 entry = MealPlanEntry.model_validate(raw)
                 problem = entry_problem(entry)
             except ValidationError as e:
-                fields = ", ".join(MealPlanEntry.model_fields)
-                entry, problem = None, "; ".join(
-                    f'unknown field "{err["loc"][0]}" (fields are: {fields})'
-                    if err["type"] == "extra_forbidden"
-                    else f"{'.'.join(str(part) for part in err['loc']) or 'entry'}: {err['msg']}"
-                    for err in e.errors()
-                )
+                entry, problem = None, "; ".join(field_error(err) for err in e.errors())
             if problem:
                 problems.append(f"{describe(index, raw)}: {problem}")
             else:
