@@ -969,6 +969,36 @@ async def run(session: ClientSession) -> None:
         raw = _mealie.get_shopping_list(merge_list)["listItems"]
         check("merge list ends with three lines (food+unit, note, combined duplicate)",
               len(raw) == 3, str([i.get("display") for i in raw]))
+
+        # Deletes check every id first (one read of all items), so an unknown id
+        # deletes nothing — Mealie itself reports success for any id
+        second_list = _mealie.create_shopping_list("__test_merge_list_2__")["id"]
+        other = _mealie.create_shopping_list_item(shopping_list_id=second_list, note="__test_merge_other__")
+        other_id = other["createdItems"][0]["id"]
+        ids = [i["id"] for i in raw]
+        live_ids = lambda: {i["id"] for i in _mealie.get_shopping_list_items(per_page=-1)["items"]}
+        unknown = "00000000-0000-4000-8000-000000000000"
+        r = await tool("delete_shopping_list_items_bulk", {"item_ids": [ids[0], unknown]})
+        check("delete: a real id mixed with an unknown one is an error and deletes NOTHING",
+              "error" in r and unknown in r["error"] and ids[0] in live_ids(), str(r)[:200])
+        r = await tool("delete_shopping_list_item", {"item_id": unknown})
+        check("delete: an unknown id alone is an error", "error" in r and "Nothing was deleted" in r["error"], str(r)[:160])
+        r = await tool("delete_shopping_list_item", {"item_id": ids[0]})
+        check("delete one item: returns it as it was, and it's gone",
+              [i["id"] for i in r.get("deleted", [])] == [ids[0]] and r["deleted"][0].get("display")
+              and ids[0] not in live_ids(), str(r)[:200])
+        r = await tool("delete_shopping_list_items_bulk", {"item_ids": [ids[1], other_id, ids[1]]})
+        check("bulk delete across two lists (an id listed twice): each reported once, all gone",
+              [(i["id"], i["shoppingListId"]) for i in r.get("deleted", [])]
+              == [(ids[1], merge_list), (other_id, second_list)] and not ({ids[1], other_id} & live_ids()),
+              str(r)[:240])
+        r = await tool("delete_shopping_list", {"list_id": second_list})
+        check("delete a list: id, name and item count",
+              r == {"deleted": [{"id": second_list, "name": "__test_merge_list_2__", "itemCount": 0}]}, str(r))
+        r = await tool("delete_shopping_list", {"list_id": merge_list})
+        check("delete a list with an item on it: itemCount 1, and the item goes with it",
+              r.get("deleted", [{}])[0].get("itemCount") == 1 and ids[2] not in live_ids(), str(r))
+        merge_list = None
     except Exception as e:
         check("shopping list merges", False, repr(e))
     finally:
@@ -1051,6 +1081,9 @@ async def run(session: ClientSession) -> None:
         try:
             r = await session.call_tool("delete_mealplan", {"entry_id": str(mid)})
             check_tool("delete_mealplan (text entry_id)", r)
+            gone = _json.loads(r.content[0].text).get("deleted", []) if not r.isError else []
+            check("delete_mealplan returns the deleted entry's card",
+                  [(e.get("id"), e.get("title")) for e in gone] == [(int(mid), "__test_mealplan__")], str(gone))
             state["mealplan_id"] = None
         except Exception as e:
             check("delete_mealplan", False, str(e))

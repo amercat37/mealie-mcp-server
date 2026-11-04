@@ -14,6 +14,32 @@ logger = logging.getLogger("mealie-mcp")
 def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     """Register all shopping list-related tools with the MCP server."""
 
+    def delete_items(item_ids: List[str]) -> Dict[str, Any]:
+        """Delete items after checking every id exists, and return what was deleted.
+
+        Mealie reports success for an id that doesn't exist, so a wrong id would read
+        as deleted while the intended item stays on the list. One read of all items
+        (every list) checks them first; an unknown id deletes nothing.
+        """
+        ids = list(dict.fromkeys(item_ids))
+        if not ids:
+            raise ValueError("Item IDs list cannot be empty")
+        existing = {
+            item["id"]: item
+            for item in mealie.get_shopping_list_items(per_page=-1).get("items", [])
+        }
+        unknown = [item_id for item_id in ids if item_id not in existing]
+        if unknown:
+            raise ValueError(
+                "No shopping list item with id " + ", ".join(unknown)
+                + ". Nothing was deleted. Read the list again (get_shopping_list) for current ids."
+            )
+        if len(ids) == 1:
+            mealie.delete_shopping_list_item(ids[0])
+        else:
+            mealie.delete_shopping_list_items_bulk(ids)
+        return {"deleted": [trim_shopping_item(existing[item_id], with_list_id=True) for item_id in ids]}
+
     # Shopping List Operations
 
     @mcp.tool()
@@ -234,11 +260,17 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             list_id: The UUID of the shopping list to delete
 
         Returns:
-            Dict[str, Any]: Confirmation of deletion
+            Dict[str, Any]: deleted: the list's id, name and itemCount (its items are
+                deleted with it)
         """
         try:
             logger.info({"message": "Deleting shopping list", "list_id": list_id})
-            return trim_shopping_list(mealie.delete_shopping_list(list_id))
+            deleted = mealie.delete_shopping_list(list_id)
+            return {"deleted": [{
+                "id": deleted.get("id", list_id),
+                "name": deleted.get("name"),
+                "itemCount": len(deleted.get("listItems") or []),
+            }]}
         except Exception as e:
             error_msg = f"Error deleting shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -491,11 +523,12 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             item_id: The UUID of the shopping list item to delete
 
         Returns:
-            Dict[str, Any]: Confirmation of deletion
+            Dict[str, Any]: deleted: the item as it was (id, shoppingListId, display,
+                checked, ...). An unknown id is an error and nothing is deleted.
         """
         try:
             logger.info({"message": "Deleting shopping list item", "item_id": item_id})
-            return mealie.delete_shopping_list_item(item_id)
+            return delete_items([item_id])
         except Exception as e:
             error_msg = f"Error deleting shopping list item '{item_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -543,11 +576,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             item_ids: List of shopping list item UUIDs to delete
 
         Returns:
-            Dict[str, Any]: Results of the bulk deletion operation
+            Dict[str, Any]: deleted: each item as it was (id, shoppingListId, display,
+                checked, ...). Every id is checked first: if any is unknown, nothing is
+                deleted and the error names it. Ids may come from different lists.
         """
         try:
             logger.info({"message": "Deleting bulk shopping list items", "count": len(item_ids)})
-            return mealie.delete_shopping_list_items_bulk(item_ids)
+            return delete_items(item_ids)
         except Exception as e:
             error_msg = f"Error deleting bulk shopping list items: {str(e)}"
             logger.error({"message": error_msg})

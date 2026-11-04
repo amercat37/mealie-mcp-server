@@ -289,11 +289,15 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 create_mealplan
 
         Returns:
-            Dict[str, Any]: Confirmation of deletion
+            Dict[str, Any]: deleted: the entry as it was (id, date, endDate for week
+                entries, entryType, and title or recipeId/recipeName/recipeSlug)
         """
         try:
             logger.info({"message": "Deleting mealplan entry", "entry_id": entry_id})
-            return mealie.delete_mealplan(entry_id=entry_id)
+            # Mealie's delete reply has no recipe name, so read the entry first
+            entry = mealie.get_mealplan(entry_id)
+            mealie.delete_mealplan(entry_id=entry_id)
+            return {"deleted": [summarize_entry(entry)]}
         except Exception as e:
             error_msg = f"Error deleting mealplan entry '{entry_id}': {str(e)}"
             logger.error({"message": error_msg})

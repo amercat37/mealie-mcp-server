@@ -10,6 +10,7 @@ No live infrastructure — exercises logic against stand-in objects:
 - shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
 - item adds and edits reporting created / updated / deleted (Mealie merges lines)
+- deletes: item ids checked first (nothing deleted if any is unknown), trimmed replies
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
   partial-failure report
 
@@ -255,6 +256,42 @@ class FakeItemWrites:
         return self.reply
 
 
+class FakeDeletes:
+    """Items on two lists, as one read of all items returns them; records deletes.
+    Like Mealie, deleting reports success whatever the id."""
+
+    def __init__(self):
+        self.reads, self.deleted, self.mealplan_deletes = [], [], []
+        self.items = [BEEF_ITEM, NOTE_ITEM, {**TOMATO_ITEM, "shoppingListId": "L2"}]
+
+    def get_shopping_list_items(self, page=None, per_page=None, search=None):
+        self.reads.append(per_page)
+        return {"page": 1, "per_page": per_page, "total": len(self.items), "items": self.items}
+
+    def delete_shopping_list_item(self, item_id):
+        self.deleted.append([item_id])
+        return {"message": "", "error": False}
+
+    def delete_shopping_list_items_bulk(self, item_ids):
+        self.deleted.append(list(item_ids))
+        return {"message": "", "error": False}
+
+    def delete_shopping_list(self, list_id):
+        return FULL_LIST
+
+    def get_mealplan(self, entry_id):
+        if int(entry_id) != 7:
+            raise ValueError("404 Not found")
+        return {"id": 7, "date": "2099-03-04", "endDate": None, "entryType": "dinner", "title": "",
+                "text": "", "recipeId": RECIPE_UUID, "groupId": "g", "userId": "u", "householdId": "h",
+                "recipe": {"id": RECIPE_UUID, "name": "Chili Sauce", "slug": "chili-sauce", "tags": []}}
+
+    def delete_mealplan(self, entry_id):
+        self.mealplan_deletes.append(entry_id)
+        return {"id": 7, "date": "2099-03-04", "endDate": None, "entryType": "dinner", "title": "",
+                "text": "", "recipeId": RECIPE_UUID, "recipeScale": 1.0}
+
+
 def item_reply(created=(), updated=(), deleted=()):
     return {"createdItems": list(created), "updatedItems": list(updated), "deletedItems": list(deleted)}
 
@@ -476,7 +513,6 @@ def run() -> None:
         ("get_shopping_list", {"list_id": "L1"}),
         ("create_shopping_list", {"name": "Groceries"}),
         ("update_shopping_list", {"list_id": "L1", "name": "Groceries"}),
-        ("delete_shopping_list", {"list_id": "L1"}),
         ("add_recipe_to_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
         ("remove_recipe_from_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
         ("add_recipes_to_shopping_list_bulk", {"list_id": "L1", "recipes": [{"recipeId": "R1"}]}),
@@ -544,6 +580,49 @@ def run() -> None:
     check("item replies have no nested objects or internal ids",
           not any(k in json.dumps(call(srv, "update_shopping_list_item", {"item_id": "I4", "checked": True}))
                   for k in ("groupId", "foodId", "pluralName", "#7CB342")))
+
+    # ------------------------------------------------------------------
+    section("Deletes: item ids checked first, every delete says what it removed")
+    # ------------------------------------------------------------------
+    beef_out, note_out = ({**TRIMMED_ITEMS[0], "shoppingListId": "L1"}, {**TRIMMED_ITEMS[1], "shoppingListId": "L1"})
+    tomato_l2 = {"id": "I3", "shoppingListId": "L2", "display": "2 tomatoes", "checked": False, "quantity": 2.0,
+                 "food": "tomato", "label": "Fruits"}
+    fake = FakeDeletes()
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    out = call(srv, "delete_shopping_list_item", {"item_id": "I1"})
+    check("delete one item: returns it as it was", out == {"deleted": [beef_out]} and fake.deleted == [["I1"]],
+          json.dumps(out))
+    check("the check is one read of all items (every list)", fake.reads == [-1], str(fake.reads))
+    out = call(srv, "delete_shopping_list_items_bulk", {"item_ids": ["I2", "I3"]})
+    check("bulk delete across two lists, a checked item included",
+          out == {"deleted": [note_out, tomato_l2]} and fake.deleted[-1] == ["I2", "I3"], json.dumps(out)[:200])
+    out = call(srv, "delete_shopping_list_items_bulk", {"item_ids": ["I1", "I1", "I2"]})
+    check("an id listed twice is deleted and reported once",
+          [i["id"] for i in out["deleted"]] == ["I1", "I2"] and fake.deleted[-1] == ["I1", "I2"], str(fake.deleted[-1]))
+    sent = len(fake.deleted)
+    err = call_error(srv, "delete_shopping_list_item", {"item_id": "I9"})
+    check("unknown id: error naming it, nothing deleted",
+          "I9" in err and "Nothing was deleted" in err and len(fake.deleted) == sent, err[-140:])
+    err = call_error(srv, "delete_shopping_list_items_bulk", {"item_ids": ["I1", "I9", "I8"]})
+    check("real ids mixed with unknown ones: error names only the unknown, NOTHING deleted (not even the real one)",
+          "I9, I8" in err and "I1" not in err.split("No shopping list item")[1] and len(fake.deleted) == sent, err[-160:])
+    reads = len(fake.reads)
+    err = call_error(srv, "delete_shopping_list_items_bulk", {"item_ids": []})
+    check("empty id list rejected before reading anything",
+          "cannot be empty" in err and len(fake.reads) == reads and len(fake.deleted) == sent, err[-80:])
+    out = call(srv, "delete_shopping_list", {"list_id": "L1"})
+    check("delete a list: id, name and how many items went with it",
+          out == {"deleted": [{"id": "L1", "name": "Groceries", "itemCount": 2}]}, json.dumps(out))
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, fake)
+    out = call(srv, "delete_mealplan", {"entry_id": 7})
+    check("delete a meal plan entry: its card, with the recipe name (read before deleting)",
+          out == {"deleted": [{"id": 7, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+                               "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}]}
+          and fake.mealplan_deletes == [7], json.dumps(out))
+    err = call_error(srv, "delete_mealplan", {"entry_id": 8})
+    check("unknown meal plan id: error, nothing deleted", "404" in err and fake.mealplan_deletes == [7], err[-100:])
 
     # ------------------------------------------------------------------
     section("Item edits: merge into the current item for Mealie's full-replace PUT")
