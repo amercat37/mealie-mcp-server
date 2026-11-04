@@ -614,6 +614,30 @@ async def run(session: ClientSession) -> None:
             check("get_tag_by_slug", False, str(e))
             check("get_tag_by_slug recipes are slugs", False, str(e))
 
+    # By id and by slug must agree, listing as many recipes as Mealie counts (Mealie's
+    # by-id lookups leave the recipes out). A sample — the two busiest and an empty one —
+    # not every tag: a burst of lookups through the public URL looks like a crawler to
+    # CrowdSec and gets this host banned
+    for kind, list_tool, by_id, by_slug, id_arg, slug_arg in (
+        ("tag", "get_tags", "get_tag", "get_tag_by_slug", "tag_id", "tag_slug"),
+        ("category", "get_categories", "get_category", "get_category_by_slug", "category_id", "category_slug"),
+    ):
+        try:
+            everything = _json.loads((await session.call_tool(list_tool, {"per_page": -1})).content[0].text)["items"]
+            busiest = sorted(everything, key=lambda o: -(o.get("recipeCount") or 0))
+            sample = busiest[:2] + [o for o in busiest[2:] if not o.get("recipeCount")][:1]
+            mismatched = []
+            for org in sample:
+                a = _json.loads((await session.call_tool(by_id, {id_arg: org["id"]})).content[0].text)
+                b = _json.loads((await session.call_tool(by_slug, {slug_arg: org["slug"]})).content[0].text)
+                if a != b or set(a) != {"id", "name", "slug", "recipes"} or len(a["recipes"]) != org.get("recipeCount"):
+                    mismatched.append((org["slug"], len(a.get("recipes", [])), len(b.get("recipes", [])), org.get("recipeCount")))
+            check(f"{by_id} and {by_slug} agree, with all the {kind}'s recipes",
+                  bool(sample) and not mismatched,
+                  f"{[(o['slug'], o.get('recipeCount')) for o in sample]}; mismatched={mismatched}")
+        except Exception as e:
+            check(f"{by_id} and {by_slug} agree, with all the {kind}'s recipes", False, repr(e))
+
     # -----------------------------------------------------------------------
     section("Foods")
     # -----------------------------------------------------------------------

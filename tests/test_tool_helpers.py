@@ -6,6 +6,7 @@ No live infrastructure — exercises logic against stand-in objects:
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
 - recipe read tools trimming Mealie's nested copies (get_recipes, concise, detailed)
+- tag/category lookups by id returning the recipes, like the by-slug lookups
 - shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
@@ -28,8 +29,10 @@ from mcp.server.fastmcp import FastMCP
 
 from mealie.mealplan import MealplanMixin
 from tools.mealplan_tools import register_mealplan_tools
+from tools.categories_tools import register_categories_tools
 from tools.recipe_tools import register_recipe_tools
 from tools.shopping_list_tools import register_shopping_list_tools
+from tools.tags_tools import register_tags_tools
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -218,6 +221,34 @@ class FakeShopping:
 
     def add_recipes_to_shopping_list_bulk(self, list_id, recipes):
         return FULL_LIST
+
+
+class FakeOrganizers:
+    """Tag and category lookups as Mealie v3.30 answers them: by slug includes full
+    recipe summaries; by id gives a tag an empty recipes list and a category none."""
+
+    RECIPES = [{"id": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "tags": [], "groupId": "g"},
+               {"id": "R2", "name": "Salsa", "slug": "salsa", "tags": [], "groupId": "g"}]
+    TAGS = {"T1": {"name": "Spicy", "id": "T1", "groupId": "g", "slug": "spicy"},
+            "T2": {"name": "Unused", "id": "T2", "groupId": "g", "slug": "unused"}}
+    CATS = {"C1": {"name": "Sauce", "id": "C1", "groupId": None, "slug": "sauce"}}
+
+    def get_tag(self, tag_id):
+        if tag_id not in self.TAGS:
+            raise ValueError("404 Not found")
+        return {**self.TAGS[tag_id], "recipes": []}
+
+    def get_tag_by_slug(self, slug):
+        tag = next(t for t in self.TAGS.values() if t["slug"] == slug)
+        return {**tag, "recipes": self.RECIPES if slug == "spicy" else []}
+
+    def get_category(self, category_id):
+        cat = self.CATS[category_id]
+        return {"id": cat["id"], "slug": cat["slug"], "name": cat["name"]}
+
+    def get_category_by_slug(self, slug):
+        cat = next(c for c in self.CATS.values() if c["slug"] == slug)
+        return {**cat, "recipes": self.RECIPES}
 
 
 class FakeLabels:
@@ -435,6 +466,27 @@ def run() -> None:
     check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
           fake.sent == [{"name": "Groceries"}], str(fake.sent))
     check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
+
+    # ------------------------------------------------------------------
+    section("Tag and category lookups: by id lists the recipes, like by slug")
+    # ------------------------------------------------------------------
+    srv = FastMCP("probe")
+    register_tags_tools(srv, FakeOrganizers())
+    register_categories_tools(srv, FakeOrganizers())
+    spicy = {"id": "T1", "name": "Spicy", "slug": "spicy", "recipes": ["chili-sauce", "salsa"]}
+    check("get_tag by id returns the tag's recipes (Mealie's by-id lookup has none)",
+          call(srv, "get_tag", {"tag_id": "T1"}) == spicy, json.dumps(call(srv, "get_tag", {"tag_id": "T1"})))
+    check("get_tag_by_slug returns the same", call(srv, "get_tag_by_slug", {"tag_slug": "spicy"}) == spicy)
+    check("a tag with no recipes: empty list",
+          call(srv, "get_tag", {"tag_id": "T2"}) == {"id": "T2", "name": "Unused", "slug": "unused", "recipes": []})
+    sauce = {"id": "C1", "name": "Sauce", "slug": "sauce", "recipes": ["chili-sauce", "salsa"]}
+    check("get_category by id returns the category's recipes (Mealie's by-id lookup has no list)",
+          call(srv, "get_category", {"category_id": "C1"}) == sauce,
+          json.dumps(call(srv, "get_category", {"category_id": "C1"})))
+    check("get_category_by_slug returns the same",
+          call(srv, "get_category_by_slug", {"category_slug": "sauce"}) == sauce)
+    err = call_error(srv, "get_tag", {"tag_id": "nope"})
+    check("unknown tag id is an error", "nope" in err and "404" in err, err[-100:])
 
     # ------------------------------------------------------------------
     section("Shopping list section order by label name")

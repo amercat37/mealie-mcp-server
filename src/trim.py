@@ -171,3 +171,11 @@ def trim_shopping_list(shopping_list: Any) -> Any:
     if isinstance(shopping_list.get("listItems"), list):
         out["listItems"] = [trim_shopping_item(i) for i in shopping_list["listItems"]]
     return out
+
+
+def trim_organizer(organizer: Dict[str, Any], with_recipes: bool = False) -> Dict[str, Any]:
+    """A tag or category: id, name and slug, plus its recipes as slugs if asked."""
+    out = {"id": organizer.get("id"), "name": organizer.get("name"), "slug": organizer.get("slug")}
+    if with_recipes:
+        out["recipes"] = [r["slug"] for r in organizer.get("recipes") or [] if r.get("slug")]
+    return out

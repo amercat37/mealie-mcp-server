@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
+from trim import trim_organizer
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -44,15 +45,15 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             tag_id: The UUID of the tag
 
         Returns:
-            Dict[str, Any]: The tag details with a recipes list of slugs. Use
-            get_recipe_detailed to fetch full details for any slug.
+            Dict[str, Any]: The tag's id, name and slug, and recipes: the slug of
+            every recipe with this tag. Use get_recipe_detailed for any recipe's details.
         """
         try:
             logger.info({"message": "Fetching tag", "tag_id": tag_id})
-            result = mealie.get_tag(tag_id)
-            if result.get("recipes"):
-                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
-            return result
+            # Mealie's lookup by id doesn't include the tag's recipes, so look up
+            # its slug, then fetch by slug, which does
+            slug = mealie.get_tag(tag_id)["slug"]
+            return trim_organizer(mealie.get_tag_by_slug(slug), with_recipes=True)
         except Exception as e:
             error_msg = f"Error fetching tag '{tag_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -67,15 +68,12 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             tag_slug: The slug of the tag (e.g., "quick", "healthy")
 
         Returns:
-            Dict[str, Any]: The tag details with a recipes list of slugs. Use
-            get_recipe_detailed to fetch full details for any slug.
+            Dict[str, Any]: The tag's id, name and slug, and recipes: the slug of
+            every recipe with this tag. Use get_recipe_detailed for any recipe's details.
         """
         try:
             logger.info({"message": "Fetching tag by slug", "tag_slug": tag_slug})
-            result = mealie.get_tag_by_slug(tag_slug)
-            if result.get("recipes"):
-                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
-            return result
+            return trim_organizer(mealie.get_tag_by_slug(tag_slug), with_recipes=True)
         except Exception as e:
             error_msg = f"Error fetching tag by slug '{tag_slug}': {str(e)}"
             logger.error({"message": error_msg})
