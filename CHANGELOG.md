@@ -4,6 +4,44 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.24] — 2026-11-03
+
+Follow-ups from the v1.0.23 assistant test runs.
+
+### Changed
+
+- **Shopping lists no longer embed whole recipes.** Each `recipeReferences` entry carried a full recipe summary (description, tags, categories, times…) — most of the list's size, and the times showed as `null`. Every tool that returns a whole list (`get_shopping_lists`, `get_shopping_list`, `create_shopping_list`, `update_shopping_list`, `delete_shopping_list`, `add_recipe_to_shopping_list`, `remove_recipe_from_shopping_list`, `add_recipes_to_shopping_list_bulk`) now returns `{recipeId, name, slug, recipeQuantity}` per recipe. Only the tool output is trimmed; the rename still sends Mealie the full list.
+- **`update_shopping_list_label_settings` takes label names in store order.** It previously passed raw label-setting objects through, and its description said each needed only `labelId` + `position` — Mealie also requires `id` and `shoppingListId`, so following the description always failed. The tool now takes `labels`: names as `get_labels` returns them (case-insensitive; a label id is accepted too). Named labels go first and the rest keep their current relative order. Every name is checked before anything is sent: an unknown one returns an error listing the list's real labels and changes nothing. It returns only the resulting `labelOrder`.
+- **`create_mealplan_bulk` returns the created entries.** It returned only a message, so an assistant had to call `get_all_mealplans` to find the ids of what it had just made. It now returns `created`: each entry's `id`, `date`, `endDate` (week entries), `entryType`, and `title` or `recipeId` / `recipeName` / `recipeSlug`, in the order given.
+  - **Every entry is checked before any is created** — date format, `entry_type` (all seven Mealie types: breakfast, lunch, dinner, side, snack, drink, dessert), a recipe or title, a recipe UUID, and no unknown fields (`entryType` was silently ignored, creating a breakfast). One bad entry creates nothing and the error names it.
+  - **Partial failures are reported precisely.** Entries are created one at a time; if Mealie fails partway, the error lists the ids created, the entry that failed and those not attempted, so a retry doesn't duplicate the first ones.
+- **`create_mealplan` and `update_mealplan` return the same trimmed entry** instead of Mealie's full entry with the embedded recipe summary. `create_mealplan` also rejects a bad `entry_type` before calling Mealie.
+- **`entry_type` is required when creating meal plan entries.** `create_mealplan` and each `create_mealplan_bulk` entry defaulted a missing type to breakfast, so "tacos on Tuesday" was quietly filed as breakfast. A missing type is now an error listing the seven types (bulk: nothing is created), and the tool description tells the assistant to ask which meal.
+- **No label names hard-coded in tool descriptions or prompts.** The `shopping_trip` prompt listed one Mealie's labels alphabetically and told the assistant to use them in that order (working against the store order, and missing a label). It, the `recipe_builder` prompt and `get_labels` now send the assistant to `get_labels` for the exact names and say never to invent one.
+
+### Fixed
+
+- **`update_shopping_list_items_bulk` wiped the fields it wasn't sent.** Mealie replaces each item with what it receives, and the tool passed the assistant's items straight through, so checking items off with `{id, checked}` cleared each item's note, food and label and reset its quantity to 1 (seen in the ChatGPT write test). It now reads every item first and merges in only the fields sent, like `update_shopping_list_item`; each item needs only its `id` (no longer `shoppingListId`). An unknown id changes nothing.
+- **`create_recipe` ingredient ids changed on every read.** Ingredients were sent without a `referenceId`; Mealie stores none and makes up a new random one each time the recipe is read, so the create response and every later read disagreed (an assistant comparing them flagged it). `create_recipe` now sends an id per ingredient, as Mealie's own editor does, so it is stored and stays the same. Recipes saved in the Mealie editor were never affected.
+- `update_mealplan` / `delete_mealplan` typed `entry_id` as text, but meal plan ids are numbers, so passing the id exactly as `create_mealplan` / `get_all_mealplans` returned it (`12`) failed validation and the assistant had to retry with `"12"`. Both now accept a number or text.
+
+### Tests
+
+- `tests/LLM_PROMPT_WRITE.md` (new) — the shopping list and meal plan write prompt from the v1.0.23 assistant runs, saved and updated for this release: trimmed recipe references, reordering by label name and the unknown-name rejection, a numeric `entry_id`, bulk create ids and a rejected bulk batch. It deletes everything it creates. `tests/README.md` documents it.
+- `tests/LLM_PROMPT_CREATE.md` — the unknown-unit check had stopped testing anything: "slices" was added to the unit catalog, so it resolved as a normal unit and passed. Ingredient 4 is now "2 rashers bacon", sent exactly as given, and a `get_units` pre-check makes the group report NOT TESTED instead of a false PASS if "rashers" is ever added.
+- `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
+- `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
+- `tests/test_mcp_server.py` — `create_recipe`'s ingredient `referenceId`s match two later reads.
+- `tests/test_mcp_server.py` — a bulk check-off sending only `{id, checked}` keeps the item's note, quantity and food.
+- `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.
+- `tests/test_tool_helpers.py` — label reordering: order, payload fields, case and duplicate handling, id fallback, unknown and empty input send nothing.
+- `tests/test_tool_helpers.py` — trimmed meal plan entries, each pre-create check (including a missing `entry_type` on both create tools), and the partial-failure report.
+- `tests/test_tool_helpers.py`, `tests/test_mcp_server.py` — `update_mealplan` returns the trimmed entry.
+- `tests/test_mcp_server.py` — `create_mealplan` / `create_mealplan_bulk` return trimmed entries with ids (and `endDate` for a week entry); a bulk call with one bad entry creates nothing.
+- `tests/test_mcp_server.py` — live label reordering on the test list (named first, rest unchanged), unknown-name rejection with nothing changed, empty input rejected.
+
+---
+
 ## [1.0.23] — 2026-11-03
 
 Compatibility with **Mealie v3.30.0** (upgraded from v3.16.0). **Now requires Mealie v3.30.0 or later.**

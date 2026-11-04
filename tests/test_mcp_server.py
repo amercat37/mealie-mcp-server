@@ -324,6 +324,17 @@ async def run(session: ClientSession) -> None:
             # Couldn't parse structured ingredients — assert the text at least survived
             check("unknown unit text preserved somewhere in recipe",
                   "__test_unknown_unit__" in dtext, dtext[:120])
+
+        # Ingredient ids must be stored: Mealie makes up a new random one on every read
+        # for an ingredient saved without one, so the create response and two reads
+        # would all disagree
+        reread = await session.call_tool("get_recipe_detailed", {"slug": "test-recipe-unknown-unit"})
+        created_refs = [i.get("referenceId") for i in _json.loads(text).get("recipeIngredient", [])]
+        read_refs = [i.get("referenceId") for i in _json.loads(dtext).get("recipeIngredient", [])]
+        reread_refs = [i.get("referenceId") for i in _json.loads(reread.content[0].text).get("recipeIngredient", [])]
+        check("create_recipe ingredient referenceIds are stored (create and two reads agree)",
+              bool(read_refs) and created_refs == read_refs == reread_refs,
+              f"created={created_refs} read={read_refs} reread={reread_refs}")
     except Exception as e:
         check("create_recipe accepts unknown unit", False, str(e))
 
@@ -665,7 +676,6 @@ async def run(session: ClientSession) -> None:
         for tool, args in [
             ("get_shopping_list", {"list_id": lid}),
             ("update_shopping_list", {"list_id": lid, "name": "__test_shopping_list_renamed__"}),
-            ("update_shopping_list_label_settings", {"list_id": lid, "label_settings": []}),
             ("get_shopping_list_items", {}),
         ]:
             try:
@@ -673,6 +683,40 @@ async def run(session: ClientSession) -> None:
                 check_tool(tool, r)
             except Exception as e:
                 check(tool, False, str(e))
+
+        # Section order by label name: named labels first, the rest keep their order
+        def label_order(list_data: dict) -> list:
+            return [st["label"]["name"] for st in
+                    sorted(list_data.get("labelSettings", []), key=lambda st: st["position"])]
+
+        try:
+            before = label_order(_mealie.get_shopping_list(lid))
+            if len(before) >= 3:
+                pick = [before[-1], before[-2], before[-3]]
+                r = await session.call_tool("update_shopping_list_label_settings", {
+                    "list_id": lid, "labels": [pick[0].upper(), pick[1], pick[2]],
+                })
+                out = _json.loads(r.content[0].text) if not r.isError else {}
+                expected = pick + [n for n in before if n not in pick]
+                check("update_shopping_list_label_settings orders named labels first, rest unchanged",
+                      out.get("labelOrder") == expected and label_order(_mealie.get_shopping_list(lid)) == expected,
+                      error_text(r) if r.isError else str(out.get("labelOrder", ""))[:120])
+
+                r = await session.call_tool("update_shopping_list_label_settings", {
+                    "list_id": lid, "labels": [before[0], "__not_a_label__"],
+                })
+                msg = error_text(r)
+                check("update_shopping_list_label_settings rejects an unknown name and lists the real ones",
+                      r.isError and "__not_a_label__" in msg and before[1] in msg, msg[:160])
+                check("unknown label name changes nothing",
+                      label_order(_mealie.get_shopping_list(lid)) == expected)
+
+                r = await session.call_tool("update_shopping_list_label_settings", {"list_id": lid, "labels": []})
+                check("update_shopping_list_label_settings rejects an empty list", r.isError, error_text(r)[:120])
+            else:
+                check("update_shopping_list_label_settings", False, f"need 3+ labels, list has {len(before)}")
+        except Exception as e:
+            check("update_shopping_list_label_settings", False, str(e))
 
         try:
             r = await session.call_tool("create_shopping_list_item", {
@@ -706,6 +750,27 @@ async def run(session: ClientSession) -> None:
                 except Exception as e:
                     check(tool, False, str(e))
 
+        # Bulk update changes only the fields sent: Mealie replaces each item with
+        # what it gets, so {id, checked} alone used to clear the note, food and quantity
+        try:
+            food_id = (_mealie.get_foods(per_page=1).get("items") or [{}])[0].get("id")
+            item = _mealie.create_shopping_list_item(
+                shopping_list_id=lid, note="__test_bulk_keep__", quantity=3, food_id=food_id
+            )
+            r = await session.call_tool("update_shopping_list_items_bulk", {
+                "items": [{"id": item["id"], "checked": True}]
+            })
+            after = _mealie.get_shopping_list_item(item["id"])
+            check("update_shopping_list_items_bulk keeps fields it wasn't sent",
+                  not r.isError and after.get("checked") is True and after.get("note") == "__test_bulk_keep__"
+                  and after.get("quantity") == 3 and after.get("foodId") == food_id,
+                  error_text(r) if r.isError else
+                  f"checked={after.get('checked')} note={after.get('note')!r} "
+                  f"quantity={after.get('quantity')} foodId={after.get('foodId')}")
+            _mealie.delete_shopping_list_item(item["id"])
+        except Exception as e:
+            check("update_shopping_list_items_bulk keeps fields it wasn't sent", False, str(e))
+
         # Recipe integration — get recipe UUID for shopping list recipe tests
         try:
             r = await session.call_tool("get_recipe_detailed", {"slug": slug})
@@ -731,6 +796,18 @@ async def run(session: ClientSession) -> None:
                     check_tool(tool, r)
                 except Exception as e:
                     check(tool, False, str(e))
+
+            # Recipe references are trimmed to identify the recipe, not embed it
+            try:
+                r = await session.call_tool("get_shopping_list", {"list_id": lid})
+                refs = _json.loads(r.content[0].text).get("recipeReferences", []) if not r.isError else []
+                check("get_shopping_list recipeReferences trimmed to recipeId/name/slug/recipeQuantity",
+                      bool(refs) and all(set(ref) == {"recipeId", "name", "slug", "recipeQuantity"}
+                                         and ref["recipeId"] == rid and ref["slug"] == slug for ref in refs),
+                      str(refs)[:200] if refs else error_text(r) or "no recipeReferences")
+            except Exception as e:
+                check("get_shopping_list recipeReferences trimmed to recipeId/name/slug/recipeQuantity",
+                      False, str(e))
 
         try:
             r = await session.call_tool("delete_shopping_list_items_bulk", {
@@ -768,8 +845,26 @@ async def run(session: ClientSession) -> None:
             "entries": [{"date": "2099-01-03", "entry_type": "lunch", "title": "__test_bulk_mealplan__"}]
         })
         check_tool("create_mealplan_bulk", r)
+        created = _json.loads(r.content[0].text).get("created", []) if not r.isError else []
+        check("create_mealplan_bulk returns the created entry with its id",
+              len(created) == 1 and isinstance(created[0].get("id"), int)
+              and created[0].get("title") == "__test_bulk_mealplan__" and "recipe" not in created[0],
+              str(created)[:160])
     except Exception as e:
         check("create_mealplan_bulk", False, str(e))
+
+    try:
+        r = await session.call_tool("create_mealplan_bulk", {"entries": [
+            {"date": "2099-01-04", "entry_type": "lunch", "title": "__test_bulk_rejected__"},
+            {"date": "2099-01-05", "entry_type": "brunch", "title": "__test_bulk_rejected__"},
+        ]})
+        leftover = [e for e in _mealie.get_mealplans(start_date="2099-01-01", end_date="2099-01-31", per_page=-1)
+                    .get("items", []) if e.get("title") == "__test_bulk_rejected__"]
+        check("create_mealplan_bulk with one bad entry creates nothing",
+              r.isError and "brunch" in error_text(r) and not leftover,
+              error_text(r)[:160] + (f" — created {len(leftover)}" if leftover else ""))
+    except Exception as e:
+        check("create_mealplan_bulk with one bad entry creates nothing", False, str(e))
 
     try:
         r = await session.call_tool("create_mealplan", {
@@ -777,6 +872,10 @@ async def run(session: ClientSession) -> None:
         })
         text = r.content[0].text if r.content else ""
         check("create_mealplan", not r.isError and "id" in text, error_text(r) if r.isError else "")
+        entry = _json.loads(text) if not r.isError else {}
+        check("create_mealplan returns the trimmed entry",
+              set(entry) == {"id", "date", "entryType", "title"} and entry.get("title") == "__test_mealplan__",
+              str(entry)[:160])
         ids = _re.findall(r'"id":\s*(\d+)', text)
         if ids:
             state["mealplan_id"] = ids[0]
@@ -786,16 +885,21 @@ async def run(session: ClientSession) -> None:
     if state.get("mealplan_id"):
         mid = state["mealplan_id"]
         try:
+            # Meal plan ids are numbers; the tools take them as a number or as text
             r = await session.call_tool("update_mealplan", {
-                "entry_id": mid, "date": "2099-01-02", "entry_type": "dinner"
+                "entry_id": int(mid), "date": "2099-01-02", "entry_type": "dinner"
             })
-            check_tool("update_mealplan", r)
+            check_tool("update_mealplan (numeric entry_id)", r)
+            updated = _json.loads(r.content[0].text) if not r.isError else {}
+            check("update_mealplan returns the trimmed entry",
+                  set(updated) == {"id", "date", "entryType", "title"} and updated.get("date") == "2099-01-02",
+                  str(updated))
         except Exception as e:
-            check("update_mealplan", False, str(e))
+            check("update_mealplan (numeric entry_id)", False, str(e))
 
         try:
-            r = await session.call_tool("delete_mealplan", {"entry_id": mid})
-            check_tool("delete_mealplan", r)
+            r = await session.call_tool("delete_mealplan", {"entry_id": str(mid)})
+            check_tool("delete_mealplan (text entry_id)", r)
             state["mealplan_id"] = None
         except Exception as e:
             check("delete_mealplan", False, str(e))
@@ -851,8 +955,8 @@ async def run(session: ClientSession) -> None:
             check("update_mealplan whole_week=False makes a day entry",
                   day.get("date") == "2099-01-21" and not day.get("endDate"),
                   error_text(r) if r.isError else f"date={day.get('date')} endDate={day.get('endDate')}")
-            r = await session.call_tool("delete_mealplan", {"entry_id": str(wid)})
-            check_tool("delete_mealplan (week entry)", r)
+            r = await session.call_tool("delete_mealplan", {"entry_id": wid})
+            check_tool("delete_mealplan (week entry, numeric entry_id)", r)
     except Exception as e:
         check("whole-week meal plan entries", False, str(e))
 
@@ -862,6 +966,9 @@ async def run(session: ClientSession) -> None:
                          "title": "__test_bulk_week_mealplan__", "whole_week": True}]
         })
         check_tool("create_mealplan_bulk (whole_week)", r)
+        created = _json.loads(r.content[0].text).get("created", []) if not r.isError else []
+        check("create_mealplan_bulk whole_week entry returned with its endDate",
+              len(created) == 1 and bool(created[0].get("endDate")), str(created)[:160])
         bulk = [e for e in mealplans_between("2099-02-01", "2099-02-28")
                 if e.get("title") == "__test_bulk_week_mealplan__"]
         check("create_mealplan_bulk whole_week entry aligns to household week",

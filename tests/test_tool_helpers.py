@@ -5,6 +5,10 @@ No live infrastructure — exercises logic against stand-in objects:
 - whole-week meal plan alignment for every household firstDayOfWeek setting
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
+- shopping list tools trimming recipeReferences
+- reordering a shopping list's sections by label name
+- create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
+  partial-failure report
 
 Usage:
     cd mealie-mcp-server
@@ -22,7 +26,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mcp.server.fastmcp import FastMCP
 
 from mealie.mealplan import MealplanMixin
+from tools.mealplan_tools import register_mealplan_tools
 from tools.recipe_tools import register_recipe_tools
+from tools.shopping_list_tools import register_shopping_list_tools
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -69,6 +75,108 @@ class FakeRecipes:
         if self.last_made_error:
             raise ConnectionError("household lookup failed")
         return {"recipeId": "1", "lastMade": "2026-11-01T18:00:00Z"}
+
+
+FULL_LIST = {
+    "id": "L1", "name": "Groceries", "listItems": [], "labelSettings": [],
+    "recipeReferences": [{
+        "id": "ref1", "shoppingListId": "L1", "recipeId": "R1", "recipeQuantity": 2.0,
+        "recipe": {"id": "R1", "name": "Chili Sauce", "slug": "chili-sauce",
+                   "description": "long text", "tags": [{"name": "t", "recipeCount": 0}]},
+    }],
+}
+
+
+class FakeShopping:
+    """Stands in for MealieFetcher in the shopping list tools; records what it was sent."""
+
+    def __init__(self):
+        self.sent = []
+
+    def get_shopping_lists(self, page=None, per_page=None):
+        return {"page": 1, "total": 1, "items": [FULL_LIST]}
+
+    def get_shopping_list(self, list_id):
+        return FULL_LIST
+
+    def create_shopping_list(self, name):
+        return FULL_LIST
+
+    def update_shopping_list(self, list_id, data):
+        self.sent.append(data)
+        return FULL_LIST
+
+    def delete_shopping_list(self, list_id):
+        return FULL_LIST
+
+    def add_recipe_to_shopping_list(self, list_id, recipe_id, qty):
+        return FULL_LIST
+
+    def remove_recipe_from_shopping_list(self, list_id, recipe_id):
+        return FULL_LIST
+
+    def add_recipes_to_shopping_list_bulk(self, list_id, recipes):
+        return FULL_LIST
+
+
+class FakeLabels:
+    """A list with four labels in alphabetical order; records the label settings PUT."""
+
+    NAMES = ["Baking", "Fruits", "Meats", "Vegetables & Greens"]
+
+    def __init__(self):
+        self.puts = []
+        self.settings = [
+            {"id": f"S{i}", "shoppingListId": "L1", "labelId": f"LBL{i}", "position": i,
+             "label": {"id": f"LBL{i}", "name": name}}
+            for i, name in enumerate(self.NAMES)
+        ]
+
+    def get_shopping_list(self, list_id):
+        return {"id": "L1", "name": "Groceries", "labelSettings": self.settings}
+
+    def update_shopping_list_label_settings(self, list_id, payload):
+        self.puts.append(payload)
+        by_id = {st["id"]: st for st in self.settings}
+        self.settings = [{**by_id[p["id"]], "position": p["position"]} for p in payload]
+        return self.get_shopping_list(list_id)
+
+
+class FakeMealplanCreate:
+    """Creates entries like Mealie (with the embedded recipe); fails on title "boom"."""
+
+    def __init__(self):
+        self.created = []
+
+    def create_mealplan(self, date, entry_type, recipe_id=None, title=None, whole_week=False):
+        if title == "boom":
+            raise ConnectionError("Mealie unavailable")
+        entry = {"id": len(self.created) + 1, "date": date, "endDate": None, "entryType": entry_type,
+                 "title": title or "", "text": "", "recipeId": recipe_id, "groupId": "g", "userId": "u",
+                 "householdId": "h", "recipe": None}
+        if whole_week:
+            entry["endDate"] = "2099-03-07"
+        if recipe_id:
+            entry["recipe"] = {"id": recipe_id, "name": "Chili Sauce", "slug": "chili-sauce",
+                               "description": "long text", "tags": []}
+        self.created.append(entry)
+        return entry
+
+    def update_mealplan(self, entry_id, date, entry_type, recipe_id=None, title=None, whole_week=None):
+        entry = next(e for e in self.created if e["id"] == int(entry_id))
+        entry.update(date=date, entryType=entry_type)
+        return entry
+
+
+RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
+
+
+def call_error(srv: FastMCP, tool: str, args: dict) -> str:
+    try:
+        call(srv, tool, args)
+    except Exception as e:
+        return str(e)
+    return ""
 
 
 def call(srv: FastMCP, tool: str, args: dict) -> dict:
@@ -129,6 +237,115 @@ def run() -> None:
               d.get("name") == "Chili Sauce" and d.get("totalTime") == "3 hours", str(d))
     except Exception as e:
         check("detailed: failed lastMade lookup still returns the recipe", False, repr(e))
+
+    # ------------------------------------------------------------------
+    section("Shopping list tools trim recipeReferences")
+    # ------------------------------------------------------------------
+    trimmed = [{"recipeId": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "recipeQuantity": 2.0}]
+    fake = FakeShopping()
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    for tool, args in [
+        ("get_shopping_list", {"list_id": "L1"}),
+        ("create_shopping_list", {"name": "Groceries"}),
+        ("update_shopping_list", {"list_id": "L1", "name": "Groceries"}),
+        ("delete_shopping_list", {"list_id": "L1"}),
+        ("add_recipe_to_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
+        ("remove_recipe_from_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
+        ("add_recipes_to_shopping_list_bulk", {"list_id": "L1", "recipes": [{"recipeId": "R1"}]}),
+    ]:
+        out = call(srv, tool, args)
+        check(f"{tool}: recipeReferences trimmed", out.get("recipeReferences") == trimmed,
+              str(out.get("recipeReferences"))[:120])
+    out = call(srv, "get_shopping_lists", {})
+    check("get_shopping_lists: every list's recipeReferences trimmed",
+          [i.get("recipeReferences") for i in out.get("items", [])] == [trimmed], str(out)[:120])
+    check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
+          fake.sent == [{"name": "Groceries"}], str(fake.sent))
+    check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
+
+    # ------------------------------------------------------------------
+    section("Shopping list section order by label name")
+    # ------------------------------------------------------------------
+    fake = FakeLabels()
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    out = call(srv, "update_shopping_list_label_settings",
+               {"list_id": "L1", "labels": ["vegetables & greens", "FRUITS", "Fruits"]})
+    check("named labels first (any case, duplicates ignored), the rest keep their order",
+          out.get("labelOrder") == ["Vegetables & Greens", "Fruits", "Baking", "Meats"], str(out))
+    put = fake.puts[-1] if fake.puts else []
+    check("sends every setting with id, shoppingListId, labelId and position",
+          [(p["id"], p["shoppingListId"], p["labelId"], p["position"]) for p in put]
+          == [("S3", "L1", "LBL3", 0), ("S1", "L1", "LBL1", 1), ("S0", "L1", "LBL0", 2), ("S2", "L1", "LBL2", 3)],
+          str(put))
+    out = call(srv, "update_shopping_list_label_settings", {"list_id": "L1", "labels": ["LBL2"]})
+    check("a label id is accepted too", out.get("labelOrder", [None])[0] == "Meats", str(out))
+
+    puts = len(fake.puts)
+    err = call_error(srv, "update_shopping_list_label_settings",
+                     {"list_id": "L1", "labels": ["Meats", "Produce"]})
+    check("unknown name: error names it and lists the real labels",
+          '"Produce"' in err and all(n in err for n in FakeLabels.NAMES), err)
+    check("unknown name: nothing sent to Mealie", len(fake.puts) == puts)
+    err = call_error(srv, "update_shopping_list_label_settings", {"list_id": "L1", "labels": []})
+    check("empty list rejected without sending", bool(err) and len(fake.puts) == puts, err)
+
+    # ------------------------------------------------------------------
+    section("Meal plan create/update: trimmed entries, checks first, partial failures")
+    # ------------------------------------------------------------------
+    fake = FakeMealplanCreate()
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, fake)
+    out = call(srv, "create_mealplan", {"date": "2099-03-04", "recipe_id": RECIPE_UUID, "entry_type": "dinner"})
+    check("create_mealplan returns the trimmed entry with its id",
+          out == {"id": 1, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+                  "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}, str(out))
+    out = call(srv, "update_mealplan", {"entry_id": 1, "date": "2099-03-05", "entry_type": "lunch"})
+    check("update_mealplan returns the trimmed entry",
+          out == {"id": 1, "date": "2099-03-05", "entryType": "lunch", "recipeId": RECIPE_UUID,
+                  "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}, str(out))
+    out = call(srv, "create_mealplan_bulk", {"entries": [
+        {"date": "2099-03-05", "title": "Leftovers", "entry_type": "lunch"},
+        {"date": "2099-03-04", "title": "Soup week", "entry_type": "dinner", "whole_week": True},
+    ]})
+    check("create_mealplan_bulk returns every created entry in order with ids",
+          out == {"created": [
+              {"id": 2, "date": "2099-03-05", "entryType": "lunch", "title": "Leftovers"},
+              {"id": 3, "date": "2099-03-04", "endDate": "2099-03-07", "entryType": "dinner", "title": "Soup week"},
+          ]}, str(out))
+
+    before = len(fake.created)
+    for name, entry, expect in [
+        ("bad entry_type", {"date": "2099-03-06", "title": "x", "entry_type": "brunch"}, "brunch"),
+        ("bad date", {"date": "03/06/2099", "title": "x", "entry_type": "dinner"}, "YYYY-MM-DD"),
+        ("no recipe or title", {"date": "2099-03-06", "entry_type": "dinner"}, "recipe_id or a title"),
+        ("recipe_id not a UUID", {"date": "2099-03-06", "recipe_id": "chili-sauce", "entry_type": "dinner"},
+         "not a recipe UUID"),
+        ("unknown key", {"date": "2099-03-06", "title": "x", "entryType": "dinner"}, "entryType"),
+        ("missing entry_type", {"date": "2099-03-06", "title": "x"}, 'missing "entry_type" (one of: breakfast'),
+    ]:
+        err = call_error(srv, "create_mealplan_bulk", {"entries": [
+            {"date": "2099-03-06", "title": "fine", "entry_type": "dinner"}, entry]})
+        check(f"bulk {name}: rejected, names entry 2, nothing created",
+              expect in err and "entry 2" in err and "nothing was created" in err
+              and len(fake.created) == before, err[-160:])
+    err = call_error(srv, "create_mealplan", {"date": "2099-03-06", "title": "x", "entry_type": "brunch"})
+    check("create_mealplan rejects a bad entry_type before creating",
+          "brunch" in err and len(fake.created) == before, err[-120:])
+    err = call_error(srv, "create_mealplan", {"date": "2099-03-06", "title": "x"})
+    check("create_mealplan requires entry_type (no breakfast default)",
+          "entry_type" in err and len(fake.created) == before, err[-120:])
+
+    err = call_error(srv, "create_mealplan_bulk", {"entries": [
+        {"date": "2099-03-08", "title": "a", "entry_type": "dinner"},
+        {"date": "2099-03-09", "title": "b", "entry_type": "dinner"},
+        {"date": "2099-03-10", "title": "boom", "entry_type": "dinner"},
+        {"date": "2099-03-11", "title": "d", "entry_type": "dinner"},
+    ]})
+    check("bulk partial failure: reports created ids, the failed entry and what was not attempted",
+          f"Created 2 of 4 entries (ids {before + 1}, {before + 2})" in err
+          and "entry 3 (2099-03-10) failed" in err and "entry 4 was not attempted" in err, err[-260:])
 
     # ------------------------------------------------------------------
     section("Summary")

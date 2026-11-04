@@ -1,7 +1,7 @@
 import logging
 from datetime import date as Date
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from utils import format_api_params
 
@@ -74,18 +74,18 @@ class MealplanMixin:
     def create_mealplan(
         self,
         date: str,
+        entry_type: str,
         recipe_id: Optional[str] = None,
         title: Optional[str] = None,
-        entry_type: str = "breakfast",
         whole_week: bool = False,
     ) -> Dict[str, Any]:
         """Create a new mealplan entry.
 
         Args:
             date: Date for the mealplan in ISO format (YYYY-MM-DD)
+            entry_type: Type of mealplan entry (breakfast, lunch, dinner, side, snack, drink, dessert)
             recipe_id: UUID of the recipe to add to the mealplan (optional)
             title: Title for the mealplan entry if not using a recipe (optional)
-            entry_type: Type of mealplan entry (breakfast, lunch, dinner, etc.)
             whole_week: Plan it for the whole week containing `date` rather than that day
 
         Returns:
@@ -136,7 +136,7 @@ class MealplanMixin:
 
     def update_mealplan(
         self,
-        entry_id: str,
+        entry_id: Union[int, str],
         date: str,
         entry_type: str,
         recipe_id: Optional[str] = None,
@@ -146,9 +146,9 @@ class MealplanMixin:
         """Update an existing mealplan entry.
 
         Args:
-            entry_id: UUID of the mealplan entry to update
+            entry_id: Numeric id of the mealplan entry to update
             date: New date for the entry (YYYY-MM-DD)
-            entry_type: Type of entry (breakfast, lunch, dinner, side)
+            entry_type: Type of entry (breakfast, lunch, dinner, side, snack, drink, dessert)
             recipe_id: UUID of the recipe (optional)
             title: Title for non-recipe entries (optional)
             whole_week: True makes it a whole-week entry, False a single-day entry;
@@ -178,11 +178,11 @@ class MealplanMixin:
         merged = {**current, **updates}
         return self._handle_request("PUT", f"/api/households/mealplans/{entry_id}", json=merged)
 
-    def delete_mealplan(self, entry_id: str) -> Dict[str, Any]:
+    def delete_mealplan(self, entry_id: Union[int, str]) -> Dict[str, Any]:
         """Delete a mealplan entry.
 
         Args:
-            entry_id: UUID of the mealplan entry to delete
+            entry_id: Numeric id of the mealplan entry to delete
 
         Returns:
             JSON response confirming deletion

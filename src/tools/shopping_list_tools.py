@@ -10,6 +10,27 @@ from mealie import MealieFetcher
 logger = logging.getLogger("mealie-mcp")
 
 
+def trim_recipe_references(shopping_list: Any) -> Any:
+    """Shrink a shopping list's recipeReferences to what identifies each recipe.
+
+    Mealie embeds a full recipe summary in every reference (tags, categories,
+    description, ...), most of the list's size and none of it needed to work with
+    the list. Only the tool output is trimmed — never data sent back to Mealie.
+    """
+    if isinstance(shopping_list, dict) and isinstance(shopping_list.get("recipeReferences"), list):
+        trimmed = []
+        for ref in shopping_list["recipeReferences"]:
+            recipe = ref.get("recipe") or {}
+            trimmed.append({
+                "recipeId": ref.get("recipeId"),
+                "name": recipe.get("name"),
+                "slug": recipe.get("slug"),
+                "recipeQuantity": ref.get("recipeQuantity"),
+            })
+        shopping_list = {**shopping_list, "recipeReferences": trimmed}
+    return shopping_list
+
+
 def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     """Register all shopping list-related tools with the MCP server."""
 
@@ -31,7 +52,10 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Fetching shopping lists", "page": page, "per_page": per_page})
-            return mealie.get_shopping_lists(page=page, per_page=per_page)
+            result = mealie.get_shopping_lists(page=page, per_page=per_page)
+            if isinstance(result, dict) and isinstance(result.get("items"), list):
+                result = {**result, "items": [trim_recipe_references(i) for i in result["items"]]}
+            return result
         except Exception as e:
             error_msg = f"Error fetching shopping lists: {str(e)}"
             logger.error({"message": error_msg})
@@ -50,7 +74,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Creating shopping list", "name": name})
-            return mealie.create_shopping_list(name)
+            return trim_recipe_references(mealie.create_shopping_list(name))
         except Exception as e:
             error_msg = f"Error creating shopping list '{name}': {str(e)}"
             logger.error({"message": error_msg})
@@ -65,11 +89,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             list_id: The UUID of the shopping list
 
         Returns:
-            Dict[str, Any]: The shopping list details including all items
+            Dict[str, Any]: The shopping list details including all items. Recipes on
+                the list (recipeReferences) are summarized as recipeId, name, slug and
+                recipeQuantity; use get_recipe_detailed for a recipe's full details.
         """
         try:
             logger.info({"message": "Fetching shopping list", "list_id": list_id})
-            return mealie.get_shopping_list(list_id)
+            return trim_recipe_references(mealie.get_shopping_list(list_id))
         except Exception as e:
             error_msg = f"Error fetching shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -89,7 +115,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Updating shopping list", "list_id": list_id})
-            return mealie.update_shopping_list(list_id, {"name": name})
+            return trim_recipe_references(mealie.update_shopping_list(list_id, {"name": name}))
         except Exception as e:
             error_msg = f"Error updating shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -99,25 +125,87 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     @mcp.tool()
     def update_shopping_list_label_settings(
         list_id: str,
-        label_settings: List[Dict[str, Any]],
+        labels: List[str],
     ) -> Dict[str, Any]:
-        """Set the label display order for a shopping list (e.g. to match a specific store's layout).
+        """Reorder a shopping list's sections to match a store's layout. Each section
+        is a label (the store section a food is filed under), and every list keeps
+        its own order.
 
-        Each entry in label_settings must include a labelId and position.
-        Example: [{"labelId": "uuid", "position": 0}, {"labelId": "uuid2", "position": 1}]
+        Call get_labels first and use the label names exactly as returned: names are
+        whatever this Mealie defines, so never guess or invent one. Matching ignores
+        case. If any name is unknown, nothing is changed and the error lists the
+        list's real label names.
+
+        Example: labels=["<first label name from get_labels>", "<next label name>", ...]
 
         Args:
             list_id: The UUID of the shopping list
-            label_settings: Ordered list of label setting objects
+            labels: Label names in the order the store is walked. Labels left out
+                keep their current relative order after the named ones.
 
         Returns:
-            Dict[str, Any]: The updated label settings
+            Dict[str, Any]: The list's id and name, and labelOrder — every label
+                name in the resulting order
         """
         try:
-            logger.info({"message": "Updating shopping list label settings", "list_id": list_id})
-            return mealie.update_shopping_list_label_settings(list_id, label_settings)
+            logger.info({"message": "Updating shopping list label order", "list_id": list_id, "labels": labels})
+            if not labels:
+                raise ValueError("Give at least one label name, in store order (see get_labels)")
+
+            current = sorted(
+                mealie.get_shopping_list(list_id).get("labelSettings") or [],
+                key=lambda setting: setting.get("position", 0),
+            )
+            lookup: Dict[str, Dict[str, Any]] = {}
+            for setting in current:
+                name = (setting.get("label") or {}).get("name")
+                if name:
+                    lookup[name.strip().lower()] = setting
+                # A label id is accepted too, for a caller that already has one
+                lookup[str(setting.get("labelId", "")).lower()] = setting
+
+            unknown = [name for name in labels if str(name).strip().lower() not in lookup]
+            if unknown:
+                valid = sorted(
+                    (setting.get("label") or {}).get("name", "") for setting in current
+                )
+                raise ValueError(
+                    "Unknown label "
+                    + ", ".join(f'"{name}"' for name in unknown)
+                    + ". Nothing was changed. This list's labels are: "
+                    + ", ".join(valid)
+                )
+
+            ordered: List[Dict[str, Any]] = []
+            for name in labels:
+                setting = lookup[str(name).strip().lower()]
+                if setting not in ordered:
+                    ordered.append(setting)
+            ordered += [setting for setting in current if setting not in ordered]
+
+            payload = [
+                {
+                    "id": setting["id"],
+                    "shoppingListId": list_id,
+                    "labelId": setting["labelId"],
+                    "position": position,
+                }
+                for position, setting in enumerate(ordered)
+            ]
+            updated = mealie.update_shopping_list_label_settings(list_id, payload)
+            return {
+                "id": updated.get("id", list_id),
+                "name": updated.get("name"),
+                "labelOrder": [
+                    (setting.get("label") or {}).get("name")
+                    for setting in sorted(
+                        updated.get("labelSettings") or [],
+                        key=lambda setting: setting.get("position", 0),
+                    )
+                ],
+            }
         except Exception as e:
-            error_msg = f"Error updating label settings for list '{list_id}': {str(e)}"
+            error_msg = f"Error updating label order for list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)
@@ -146,7 +234,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "count": len(recipes),
             })
-            return mealie.add_recipes_to_shopping_list_bulk(list_id, recipes)
+            return trim_recipe_references(mealie.add_recipes_to_shopping_list_bulk(list_id, recipes))
         except Exception as e:
             error_msg = f"Error bulk adding recipes to shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -165,7 +253,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Deleting shopping list", "list_id": list_id})
-            return mealie.delete_shopping_list(list_id)
+            return trim_recipe_references(mealie.delete_shopping_list(list_id))
         except Exception as e:
             error_msg = f"Error deleting shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -194,9 +282,9 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "recipe_id": recipe_id,
             })
-            return mealie.add_recipe_to_shopping_list(
+            return trim_recipe_references(mealie.add_recipe_to_shopping_list(
                 list_id, recipe_id, recipe_increment_quantity
-            )
+            ))
         except Exception as e:
             error_msg = f"Error adding recipe to shopping list: {str(e)}"
             logger.error({"message": error_msg})
@@ -223,7 +311,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "recipe_id": recipe_id,
             })
-            return mealie.remove_recipe_from_shopping_list(list_id, recipe_id)
+            return trim_recipe_references(mealie.remove_recipe_from_shopping_list(list_id, recipe_id))
         except Exception as e:
             error_msg = f"Error removing recipe from shopping list: {str(e)}"
             logger.error({"message": error_msg})
@@ -408,15 +496,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     def update_shopping_list_items_bulk(
         items: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Update multiple shopping list items at once.
+        """Update multiple shopping list items at once, e.g. check off several items.
 
-        IMPORTANT: Each item dictionary must include:
-        - id: The item UUID
-        - shoppingListId: The shopping list UUID
-        - Any other fields you want to update (note, quantity, checked, etc.)
+        Each item needs its id plus only the fields to change (note, quantity,
+        checked, etc.); every other field keeps its current value.
 
         Args:
-            items: List of item dictionaries with IDs, shoppingListId, and fields to update
+            items: List of item dictionaries, each with id and the fields to update
 
         Returns:
             Dict[str, Any]: Results of the bulk update operation

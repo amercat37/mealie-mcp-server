@@ -23,7 +23,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 
 ### 🛒 Shopping Lists
 - **List Management**: Create, rename, and delete shopping lists
-- **Label Ordering**: Configure store-specific label order (match your store's aisle layout)
+- **Label Ordering**: Reorder a list's sections by label name to match a store's layout
 - **Item Operations**: Add, update, check off, and remove items
 - **Bulk Operations**: Create, update, or delete multiple items at once
 - **Recipe Integration**: Add one or many recipes' ingredients to a list at once
@@ -40,7 +40,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 ### 📅 Meal Planning
 - **View & Create**: See all meal plans, today's menu, and add new entries
 - **Edit & Delete**: Update or remove individual meal plan entries
-- **Bulk Creation**: Add multiple meals at once
+- **Bulk Creation**: Add multiple meals at once — all entries are checked first, and the created ids come back
 - **Whole-Week Entries**: Plan a meal for "sometime this week" (Mealie v3.30+), aligned to the household's first day of week
 
 ### 💬 Prompts

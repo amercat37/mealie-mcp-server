@@ -347,17 +347,29 @@ class ShoppingListMixin:
     ) -> Dict[str, Any]:
         """Update multiple shopping list items in bulk.
 
+        Uses the same fetch-merge pattern as update_shopping_list_item: Mealie replaces
+        each item with what it is sent, so sending only {id, checked} would clear the
+        item's note, food, quantity, unit and label.
+
         Args:
-            items: List of shopping list item dictionaries with IDs
+            items: List of item dictionaries, each with its id and the fields to change
 
         Returns:
             JSON response with update results (may include per-item status)
         """
         if not items:
             raise ValueError("Items list cannot be empty")
+        missing = [i + 1 for i, item in enumerate(items) if not item.get("id")]
+        if missing:
+            raise ValueError(f"Every item needs its id (missing on item {', '.join(map(str, missing))})")
 
         logger.info({"message": "Updating bulk shopping list items", "count": len(items)})
-        return self._handle_request("PUT", "/api/households/shopping/items", json=items)
+        # Fetch every item before sending anything, so an unknown id changes nothing
+        merged = [
+            {**self._handle_request("GET", f"/api/households/shopping/items/{item['id']}"), **item}
+            for item in items
+        ]
+        return self._handle_request("PUT", "/api/households/shopping/items", json=merged)
 
     def delete_shopping_list_item(self, item_id: str) -> Dict[str, Any]:
         """Delete a specific shopping list item.
@@ -383,11 +395,11 @@ class ShoppingListMixin:
 
         Args:
             list_id: UUID of the shopping list
-            label_settings: Ordered list of label setting objects, e.g.
-                [{"labelId": "uuid", "position": 0}, ...]
+            label_settings: The list's label settings, each with id, shoppingListId,
+                labelId and position (Mealie rejects entries missing any of them)
 
         Returns:
-            JSON response containing the updated label settings
+            JSON response containing the updated shopping list
         """
         if not list_id:
             raise ValueError("Shopping list ID cannot be empty")
