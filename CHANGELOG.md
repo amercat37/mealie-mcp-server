@@ -21,6 +21,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 
 ### Fixed
 
+- **`update_shopping_list_items_bulk` wiped the fields it wasn't sent.** Mealie replaces each item with what it receives, and the tool passed the assistant's items straight through, so checking items off with `{id, checked}` cleared each item's note, food and label and reset its quantity to 1 (seen in the ChatGPT write test). It now reads every item first and merges in only the fields sent, like `update_shopping_list_item`; each item needs only its `id` (no longer `shoppingListId`). An unknown id changes nothing.
 - **`create_recipe` ingredient ids changed on every read.** Ingredients were sent without a `referenceId`; Mealie stores none and makes up a new random one each time the recipe is read, so the create response and every later read disagreed (an assistant comparing them flagged it). `create_recipe` now sends an id per ingredient, as Mealie's own editor does, so it is stored and stays the same. Recipes saved in the Mealie editor were never affected.
 - `update_mealplan` / `delete_mealplan` typed `entry_id` as text, but meal plan ids are numbers, so passing the id exactly as `create_mealplan` / `get_all_mealplans` returned it (`12`) failed validation and the assistant had to retry with `"12"`. Both now accept a number or text.
 
@@ -31,6 +32,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 - `tests/test_tool_helpers.py` — every list-returning shopping list tool trims `recipeReferences`.
 - `tests/test_mcp_server.py` — live check that a list's recipe reference is trimmed and points at the added recipe.
 - `tests/test_mcp_server.py` — `create_recipe`'s ingredient `referenceId`s match two later reads.
+- `tests/test_mcp_server.py` — a bulk check-off sending only `{id, checked}` keeps the item's note, quantity and food.
 - `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.
 - `tests/test_tool_helpers.py` — label reordering: order, payload fields, case and duplicate handling, id fallback, unknown and empty input send nothing.
 - `tests/test_tool_helpers.py` — trimmed meal plan entries, each pre-create check (including a missing `entry_type` on both create tools), and the partial-failure report.

@@ -496,15 +496,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     def update_shopping_list_items_bulk(
         items: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Update multiple shopping list items at once.
+        """Update multiple shopping list items at once, e.g. check off several items.
 
-        IMPORTANT: Each item dictionary must include:
-        - id: The item UUID
-        - shoppingListId: The shopping list UUID
-        - Any other fields you want to update (note, quantity, checked, etc.)
+        Each item needs its id plus only the fields to change (note, quantity,
+        checked, etc.); every other field keeps its current value.
 
         Args:
-            items: List of item dictionaries with IDs, shoppingListId, and fields to update
+            items: List of item dictionaries, each with id and the fields to update
 
         Returns:
             Dict[str, Any]: Results of the bulk update operation

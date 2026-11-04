@@ -24,7 +24,8 @@ create_recipe_share_token, or mark_recipe_last_made.
 3. create_shopping_list_item: note "__test_llm_item"
 4. update_shopping_list_item: set checked=true
 5. create_shopping_list_items_bulk: two items, notes "__test_llm_bulk_1" and "__test_llm_bulk_2"
-6. update_shopping_list_items_bulk: set both bulk items checked=true
+6. update_shopping_list_items_bulk: set both bulk items checked=true, sending only each item's id
+   and checked → both are checked and their notes are still "__test_llm_bulk_1" / "__test_llm_bulk_2"
 7. add_recipe_to_shopping_list: add any existing recipe (pick one from get_recipes with per_page=5)
    → each entry in the returned recipeReferences has exactly recipeId, name, slug and
    recipeQuantity — no embedded recipe
@@ -69,6 +70,8 @@ you got. End with: `X/22 passed`, and confirm nothing `__test_llm_` is left.
 ---
 
 ## What a FAIL means
+- Step 6: the notes are empty → the bulk update replaced the items instead of merging (on a real
+  list this also clears each item's food, quantity and section).
 - Step 7: recipeReferences still carry a full `recipe` object → the reference trimming isn't
   deployed.
 - Step 10: the call fails asking for ids or positions → the server still takes raw label settings

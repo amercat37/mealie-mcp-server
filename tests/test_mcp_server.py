@@ -750,6 +750,27 @@ async def run(session: ClientSession) -> None:
                 except Exception as e:
                     check(tool, False, str(e))
 
+        # Bulk update changes only the fields sent: Mealie replaces each item with
+        # what it gets, so {id, checked} alone used to clear the note, food and quantity
+        try:
+            food_id = (_mealie.get_foods(per_page=1).get("items") or [{}])[0].get("id")
+            item = _mealie.create_shopping_list_item(
+                shopping_list_id=lid, note="__test_bulk_keep__", quantity=3, food_id=food_id
+            )
+            r = await session.call_tool("update_shopping_list_items_bulk", {
+                "items": [{"id": item["id"], "checked": True}]
+            })
+            after = _mealie.get_shopping_list_item(item["id"])
+            check("update_shopping_list_items_bulk keeps fields it wasn't sent",
+                  not r.isError and after.get("checked") is True and after.get("note") == "__test_bulk_keep__"
+                  and after.get("quantity") == 3 and after.get("foodId") == food_id,
+                  error_text(r) if r.isError else
+                  f"checked={after.get('checked')} note={after.get('note')!r} "
+                  f"quantity={after.get('quantity')} foodId={after.get('foodId')}")
+            _mealie.delete_shopping_list_item(item["id"])
+        except Exception as e:
+            check("update_shopping_list_items_bulk keeps fields it wasn't sent", False, str(e))
+
         # Recipe integration — get recipe UUID for shopping list recipe tests
         try:
             r = await session.call_tool("get_recipe_detailed", {"slug": slug})
