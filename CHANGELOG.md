@@ -15,7 +15,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 - **`create_mealplan_bulk` returns the created entries.** It returned only a message, so an assistant had to call `get_all_mealplans` to find the ids of what it had just made. It now returns `created`: each entry's `id`, `date`, `endDate` (week entries), `entryType`, and `title` or `recipeId` / `recipeName` / `recipeSlug`, in the order given.
   - **Every entry is checked before any is created** — date format, `entry_type` (all seven Mealie types: breakfast, lunch, dinner, side, snack, drink, dessert), a recipe or title, a recipe UUID, and no unknown fields (`entryType` was silently ignored, creating a breakfast). One bad entry creates nothing and the error names it.
   - **Partial failures are reported precisely.** Entries are created one at a time; if Mealie fails partway, the error lists the ids created, the entry that failed and those not attempted, so a retry doesn't duplicate the first ones.
-- **`create_mealplan` returns the same trimmed entry** instead of Mealie's full entry with the embedded recipe summary, and rejects a bad `entry_type` before calling Mealie.
+- **`create_mealplan` and `update_mealplan` return the same trimmed entry** instead of Mealie's full entry with the embedded recipe summary. `create_mealplan` also rejects a bad `entry_type` before calling Mealie.
 - **`entry_type` is required when creating meal plan entries.** `create_mealplan` and each `create_mealplan_bulk` entry defaulted a missing type to breakfast, so "tacos on Tuesday" was quietly filed as breakfast. A missing type is now an error listing the seven types (bulk: nothing is created), and the tool description tells the assistant to ask which meal.
 - **No label names hard-coded in tool descriptions or prompts.** The `shopping_trip` prompt listed one Mealie's labels alphabetically and told the assistant to use them in that order (working against the store order, and missing a label). It, the `recipe_builder` prompt and `get_labels` now send the assistant to `get_labels` for the exact names and say never to invent one.
 
@@ -34,6 +34,7 @@ Follow-ups from the v1.0.23 assistant test runs.
 - `tests/test_mcp_server.py` — `update_mealplan` / `delete_mealplan` are called with both a numeric and a text `entry_id`.
 - `tests/test_tool_helpers.py` — label reordering: order, payload fields, case and duplicate handling, id fallback, unknown and empty input send nothing.
 - `tests/test_tool_helpers.py` — trimmed meal plan entries, each pre-create check (including a missing `entry_type` on both create tools), and the partial-failure report.
+- `tests/test_tool_helpers.py`, `tests/test_mcp_server.py` — `update_mealplan` returns the trimmed entry.
 - `tests/test_mcp_server.py` — `create_mealplan` / `create_mealplan_bulk` return trimmed entries with ids (and `endDate` for a week entry); a bulk call with one bad entry creates nothing.
 - `tests/test_mcp_server.py` — live label reordering on the test list (named first, rest unchanged), unknown-name rejection with nothing changed, empty input rejected.
 

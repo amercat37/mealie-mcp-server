@@ -47,7 +47,7 @@ def field_error(err: Dict[str, Any]) -> str:
 
 
 def summarize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """A created meal plan entry without the embedded recipe summary."""
+    """A created or updated meal plan entry without the embedded recipe summary."""
     summary: Dict[str, Any] = {"id": entry.get("id"), "date": entry.get("date")}
     if entry.get("endDate"):
         summary["endDate"] = entry["endDate"]
@@ -261,18 +261,19 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 omit to keep the entry's current kind
 
         Returns:
-            Dict[str, Any]: The updated meal plan entry
+            Dict[str, Any]: The updated entry: id, date, endDate (week entries only),
+                entryType, and title or recipeId/recipeName/recipeSlug
         """
         try:
             logger.info({"message": "Updating mealplan entry", "entry_id": entry_id})
-            return mealie.update_mealplan(
+            return summarize_entry(mealie.update_mealplan(
                 entry_id=entry_id,
                 date=date,
                 entry_type=entry_type,
                 recipe_id=recipe_id,
                 title=title,
                 whole_week=whole_week,
-            )
+            ))
         except Exception as e:
             error_msg = f"Error updating mealplan entry '{entry_id}': {str(e)}"
             logger.error({"message": error_msg})

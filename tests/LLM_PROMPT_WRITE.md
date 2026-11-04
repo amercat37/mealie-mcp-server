@@ -46,7 +46,7 @@ create_recipe_share_token, or mark_recipe_last_made.
 14. create_mealplan: 2099-03-04, dinner, title "__test_llm_day"
     → the reply has id, date, entryType and title, and no embedded recipe
 15. update_mealplan: move it to 2099-03-05, passing entry_id as a **number**, exactly as step 14
-    returned it
+    returned it → the reply has id, date 2099-03-05, entryType and title, and no embedded recipe
 16. create_mealplan: 2099-03-04, dinner, title "__test_llm_week", whole_week=true
     → report its date and endDate; endDate must be exactly 6 days after date
 17. get_all_mealplans with start_date=2099-03-01, end_date=2099-03-31 → both entries are listed
@@ -74,7 +74,8 @@ you got. End with: `X/22 passed`, and confirm nothing `__test_llm_` is left.
 - Step 10: the call fails asking for ids or positions → the server still takes raw label settings
   (pre-1.0.24). Wrong order → the named-first / rest-unchanged ordering is broken.
 - Step 11: the order changed → an unknown name was partly applied instead of rejected.
-- Step 15: a schema error about the id's type → `entry_id` doesn't accept a number.
+- Step 15: a schema error about the id's type → `entry_id` doesn't accept a number. A reply with
+  groupId, userId or a `recipe` object → the update reply isn't trimmed.
 - Step 19: only a message, no ids → bulk create doesn't return the created entries.
 - Step 20: "__test_llm_bad_ok" exists → bulk create didn't check every entry before creating.
 - Anything `__test_llm_` left over → delete it in the Mealie UI and note which step left it.

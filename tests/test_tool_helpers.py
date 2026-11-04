@@ -7,7 +7,7 @@ No live infrastructure — exercises logic against stand-in objects:
 - the recipe read tools when the household lastMade lookup fails
 - shopping list tools trimming recipeReferences
 - reordering a shopping list's sections by label name
-- create_mealplan / create_mealplan_bulk: trimmed entries, checks before creating,
+- create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
   partial-failure report
 
 Usage:
@@ -162,6 +162,11 @@ class FakeMealplanCreate:
         self.created.append(entry)
         return entry
 
+    def update_mealplan(self, entry_id, date, entry_type, recipe_id=None, title=None, whole_week=None):
+        entry = next(e for e in self.created if e["id"] == int(entry_id))
+        entry.update(date=date, entryType=entry_type)
+        return entry
+
 
 RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
 
@@ -287,7 +292,7 @@ def run() -> None:
     check("empty list rejected without sending", bool(err) and len(fake.puts) == puts, err)
 
     # ------------------------------------------------------------------
-    section("Meal plan create: trimmed entries, checks first, partial failures")
+    section("Meal plan create/update: trimmed entries, checks first, partial failures")
     # ------------------------------------------------------------------
     fake = FakeMealplanCreate()
     srv = FastMCP("probe")
@@ -295,6 +300,10 @@ def run() -> None:
     out = call(srv, "create_mealplan", {"date": "2099-03-04", "recipe_id": RECIPE_UUID, "entry_type": "dinner"})
     check("create_mealplan returns the trimmed entry with its id",
           out == {"id": 1, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+                  "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}, str(out))
+    out = call(srv, "update_mealplan", {"entry_id": 1, "date": "2099-03-05", "entry_type": "lunch"})
+    check("update_mealplan returns the trimmed entry",
+          out == {"id": 1, "date": "2099-03-05", "entryType": "lunch", "recipeId": RECIPE_UUID,
                   "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}, str(out))
     out = call(srv, "create_mealplan_bulk", {"entries": [
         {"date": "2099-03-05", "title": "Leftovers", "entry_type": "lunch"},

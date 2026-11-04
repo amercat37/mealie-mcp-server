@@ -869,6 +869,10 @@ async def run(session: ClientSession) -> None:
                 "entry_id": int(mid), "date": "2099-01-02", "entry_type": "dinner"
             })
             check_tool("update_mealplan (numeric entry_id)", r)
+            updated = _json.loads(r.content[0].text) if not r.isError else {}
+            check("update_mealplan returns the trimmed entry",
+                  set(updated) == {"id", "date", "entryType", "title"} and updated.get("date") == "2099-01-02",
+                  str(updated))
         except Exception as e:
             check("update_mealplan (numeric entry_id)", False, str(e))
 
