@@ -45,7 +45,8 @@ Smaller tool output. Mealie nests full copies of tags, categories, tools, foods,
 - `tests/test_tool_helpers.py` — share links and the recipe page link with `MEALIE_PUBLIC_URL` set (trailing slash ignored, group slug looked up once) and unset (a note instead of a url); `get_recipe_exports` is no longer registered.
 - `tests/test_mcp_server.py` — live: a new share link has the expected address and **opens without a login**, `get_recipe_share_tokens` lists it, `get_recipe_detailed` links to the recipe's page. `tests/test_fetcher.py` checks `get_group_self`. `tests/LLM_PROMPT.md` drops `get_recipe_exports` (26 tools). `tests/.env.testing.template` gains `MEALIE_PUBLIC_URL`.
 - `tests/test_tool_helpers.py` — every shopping list tool against a realistic Mealie list (label settings out of position order, nested food/unit/label objects, a checked note-only item, an item from a recipe).
-- `tests/test_mcp_server.py` — live: list items trimmed with names, items keep the recipes they came from, `labelOrder` matches the list's section order, `get_shopping_list_items` trimmed. `tests/LLM_PROMPT_WRITE.md` step 10 reads `labelOrder`.
+- `tests/test_mcp_server.py` — live: list items trimmed with names, items keep the recipes they came from, `labelOrder` matches the list's section order, `get_shopping_list_items` trimmed.
+- `tests/LLM_PROMPT_WRITE.md` — 24 steps (was 22): an add that merges into an existing line, a delete mixing a real id with a made-up one (nothing deleted), the `deleted` replies, meal plan reads as cards; section order read from `labelOrder`.
 
 ---
 

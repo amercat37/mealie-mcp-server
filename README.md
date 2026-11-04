@@ -76,7 +76,7 @@ cp .env.template .env
 # Edit .env with your values
 ```
 
-Set the variables in `.env`. The `AUTHENTIK_JWKS_URI` + `AUTHENTIK_HOST` pair is only needed if Authentik and this server share a Docker network — it lets the server fetch signing keys from the internal address rather than going through the public domain.
+Set the variables in `.env`. The `AUTHENTIK_JWKS_URI` + `AUTHENTIK_HOST` pair is only needed if Authentik and this server share a Docker network — it lets the server fetch signing keys from the internal address rather than going through the public domain. Set the optional `MEALIE_PUBLIC_URL` (the address you open Mealie at in a browser) to get working share links and recipe page links; without it those tools say no link can be built.
 
 ### Step 3 — Start the server
 
