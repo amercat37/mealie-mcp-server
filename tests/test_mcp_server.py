@@ -207,6 +207,12 @@ async def run(session: ClientSession) -> None:
         check("create_recipe", "test" in text.lower() or len(text) > 10, text[:80])
         if "test-recipe" in text:
             state["recipe_slug"] = "test-recipe"
+        if not r.isError:
+            created = _json.loads(text)
+            d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": created["slug"]})).content[0].text)
+            check("create_recipe returns the recipe exactly as get_recipe_detailed does",
+                  created == d, str({k: (created.get(k), d.get(k)) for k in set(created) | set(d)
+                                    if created.get(k) != d.get(k)})[:200])
     except Exception as e:
         check("create_recipe", False, str(e))
 
@@ -449,12 +455,21 @@ async def run(session: ClientSession) -> None:
             check("duplicate_recipe copies seconds and shows readable times",
                   (dup.get("totalTime"), dup.get("totalTimeSeconds")) == ("30 minutes", 1800),
                   str({k: dup.get(k) for k in ("totalTime", "totalTimeSeconds")}))
+            d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": dup["slug"]})).content[0].text)
+            check("duplicate_recipe returns the copy exactly as get_recipe_detailed does",
+                  dup == d and dup["slug"] != slug, str({k: (dup.get(k), d.get(k)) for k in set(dup) | set(d)
+                                                         if dup.get(k) != d.get(k)})[:200])
     except Exception as e:
         check("duplicate_recipe", False, str(e))
 
     try:
         r = await session.call_tool("mark_recipe_last_made", {"slug": slug})
         check_tool("mark_recipe_last_made", r)
+        made = _json.loads(r.content[0].text) if not r.isError else {}
+        from datetime import datetime as _dt, timezone as _tz
+        check("mark_recipe_last_made confirms name, slug and today's lastMade",
+              set(made) == {"name", "slug", "lastMade"} and made["slug"] == slug
+              and str(made.get("lastMade", "")).startswith(_dt.now(_tz.utc).date().isoformat()), str(made))
     except Exception as e:
         check("mark_recipe_last_made", False, str(e))
 

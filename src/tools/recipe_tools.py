@@ -37,6 +37,16 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             group["slug"] = mealie.get_group_self()["slug"]
         return f"{public_url}/g/{group['slug']}/{path}"
 
+    def detailed(slug: str, recipe: Dict[str, Any]) -> Dict[str, Any]:
+        """A whole recipe as get_recipe_detailed returns it: readable times, lastMade,
+        trimmed, and the recipe page url. create_recipe and duplicate_recipe return the
+        same, so a recipe looks the same whichever tool returns it."""
+        out = trim_recipe_detail(add_last_made(slug, add_readable_times(recipe)))
+        url = web_link(f"r/{out.get('slug', slug)}")
+        if url:
+            out["url"] = url
+        return out
+
     def share_link(token: Dict[str, Any], recipe: Dict[str, Any]) -> Dict[str, Any]:
         """A share token as the link to send: id, recipeName, recipeSlug, expiresAt, url."""
         out = {"id": token.get("id"), "recipeName": recipe.get("name"), "recipeSlug": recipe.get("slug"),
@@ -151,12 +161,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Fetching recipe", "slug": slug})
-            recipe_json = add_readable_times(mealie.get_recipe(slug))
-            recipe = trim_recipe_detail(add_last_made(slug, recipe_json))
-            url = web_link(f"r/{recipe.get('slug', slug)}")
-            if url:
-                recipe["url"] = url
-            return recipe
+            return detailed(slug, mealie.get_recipe(slug))
         except Exception as e:
             error_msg = f"Error fetching recipe with slug '{slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -367,7 +372,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 timing, servings, yield, source URL, nutrition, and notes.
 
         Returns:
-            Dict[str, Any]: The fully created recipe as returned by Mealie
+            Dict[str, Any]: The created recipe, as get_recipe_detailed returns it
         """
         try:
             logger.info({"message": "Creating recipe", "name": recipe.name})
@@ -486,7 +491,7 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 patch_data["notes"] = recipe.notes
 
             # Step 5: PATCH with full data
-            return add_readable_times(mealie.patch_recipe(slug, patch_data))
+            return detailed(slug, mealie.patch_recipe(slug, patch_data))
         except Exception as e:
             error_msg = f"Error creating recipe '{recipe.name}': {str(e)}"
             logger.error({"message": error_msg})
@@ -503,11 +508,13 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             name: Name for the new copy (defaults to original name with copy indicator)
 
         Returns:
-            Dict[str, Any]: The newly created duplicate recipe
+            Dict[str, Any]: The new copy, as get_recipe_detailed returns it (use its
+                slug from now on)
         """
         try:
             logger.info({"message": "Duplicating recipe", "slug": slug, "name": name})
-            return add_readable_times(mealie.duplicate_recipe(slug, name=name))
+            copy = mealie.duplicate_recipe(slug, name=name)
+            return detailed(copy["slug"], copy)
         except Exception as e:
             error_msg = f"Error duplicating recipe '{slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -522,11 +529,13 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             slug: The unique text identifier for the recipe.
 
         Returns:
-            Dict[str, Any]: The updated recipe details.
+            Dict[str, Any]: name, slug and lastMade — the household's last made date,
+                read back after the update, as get_recipe_detailed reports it
         """
         try:
             logger.info({"message": "Marking recipe as last made", "slug": slug})
-            return mealie.update_recipe_last_made(slug)
+            recipe = mealie.update_recipe_last_made(slug)
+            return add_last_made(slug, {"name": recipe.get("name"), "slug": recipe.get("slug", slug)})
         except Exception as e:
             error_msg = f"Error updating recipe last made '{slug}': {str(e)}"
             logger.error({"message": error_msg})

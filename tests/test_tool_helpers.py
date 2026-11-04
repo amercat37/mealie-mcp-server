@@ -126,6 +126,7 @@ class FakeRecipes:
 
     def __init__(self, last_made_error: bool):
         self.last_made_error = last_made_error
+        self.last_made = "2026-11-01T18:00:00Z"
 
     def get_recipe(self, slug):
         return {**json.loads(json.dumps(MEALIE_RECIPE)), "slug": slug}
@@ -138,6 +139,37 @@ class FakeRecipes:
                 "previous": None, "items": [json.loads(json.dumps(summary))]}
 
     group_lookups = 0
+
+    # create_recipe resolves names against the catalog, then PATCHes; Mealie replies
+    # with the whole recipe, as it does for duplicate and last-made
+    def create_recipe(self, name):
+        return "chili"
+
+    def get_categories(self, per_page=None):
+        return {"items": [organizer("Sauce", "sauce")]}
+
+    def get_tags(self, per_page=None):
+        return {"items": []}
+
+    def get_organizer_tools(self, per_page=None):
+        return {"items": []}
+
+    def get_foods(self, per_page=None):
+        return {"items": [TOMATO]}
+
+    def get_organizer_units(self, per_page=None):
+        return {"items": [CUP]}
+
+    def patch_recipe(self, slug, data):
+        return self.get_recipe(slug)
+
+    def duplicate_recipe(self, slug, name=None):
+        return self.get_recipe("chili-copy")
+
+    def update_recipe_last_made(self, slug):
+        # Mealie's reply to last-made: the whole recipe, and no lastMade field at all
+        self.last_made = "2026-11-04T18:00:00Z"
+        return self.get_recipe(slug)
 
     def get_group_self(self):
         FakeRecipes.group_lookups += 1
@@ -153,7 +185,7 @@ class FakeRecipes:
     def get_household_recipe(self, slug):
         if self.last_made_error:
             raise ConnectionError("household lookup failed")
-        return {"recipeId": "1", "lastMade": "2026-11-01T18:00:00Z"}
+        return {"recipeId": "1", "lastMade": self.last_made}
 
 
 MEATS = {"name": "Meats", "color": "#6D4C41", "groupId": "g", "id": "lab-2"}
@@ -573,6 +605,20 @@ def run() -> None:
         check("get_recipe_detailed: url to the recipe's page (trailing slash on the setting ignored)",
               d.get("url") == "https://mealie.example.com/g/family/r/chili", str(d.get("url")))
         check("the group slug is looked up once", FakeRecipes.group_lookups == 1, str(FakeRecipes.group_lookups))
+        detail = call(srv, "get_recipe_detailed", {"slug": "chili"})
+        created = call(srv, "create_recipe", {"recipe": {
+            "name": "Chili Sauce", "recipeCategory": ["sauce"],
+            "recipeIngredient": [{"quantity": 2, "unit": "cup", "food": "tomato", "note": "chopped"}],
+            "recipeInstructions": [{"text": "Simmer."}]}})
+        check("create_recipe returns the recipe exactly as get_recipe_detailed does (url included)",
+              created == detail and created.get("url"), json.dumps(created)[:160])
+        copy = call(srv, "duplicate_recipe", {"slug": "chili", "name": "Chili Sauce (copy)"})
+        check("duplicate_recipe returns the copy as get_recipe_detailed does, under the copy's slug",
+              copy == call(srv, "get_recipe_detailed", {"slug": "chili-copy"}) and copy["slug"] == "chili-copy"
+              and copy.get("url", "").endswith("/r/chili-copy"), json.dumps(copy)[:160])
+        made = call(srv, "mark_recipe_last_made", {"slug": "chili"})
+        check("mark_recipe_last_made: name, slug and lastMade read back (Mealie's reply has none)",
+              made == {"name": "Chili Sauce", "slug": "chili", "lastMade": "2026-11-04T18:00:00Z"}, json.dumps(made))
         del os.environ["MEALIE_PUBLIC_URL"]
         out = call(srv, "create_recipe_share_token", {"slug": "chili"})
         check("without MEALIE_PUBLIC_URL: no url, and a note saying why",
