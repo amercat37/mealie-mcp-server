@@ -179,3 +179,23 @@ def trim_organizer(organizer: Dict[str, Any], with_recipes: bool = False) -> Dic
     if with_recipes:
         out["recipes"] = [r["slug"] for r in organizer.get("recipes") or [] if r.get("slug")]
     return out
+
+
+def trim_item_changes(reply: Any) -> Any:
+    """Mealie's reply to adding or editing shopping list items, trimmed.
+
+    Mealie merges an item into a matching line instead of adding a second one (same
+    food and unit, or the same note text), and an edit or uncheck that makes two lines
+    match combines them. Its reply says what really happened, so it's kept in three
+    parts — created, updated, and deleted (ids of lines merged away) — with empty
+    parts left out.
+    """
+    if not isinstance(reply, dict) or not {"createdItems", "updatedItems", "deletedItems"} & set(reply):
+        return reply
+    out: Dict[str, Any] = {}
+    for part, key in (("created", "createdItems"), ("updated", "updatedItems")):
+        if reply.get(key):
+            out[part] = [trim_shopping_item(i, with_list_id=True) for i in reply[key]]
+    if reply.get("deletedItems"):
+        out["deleted"] = [i.get("id") if isinstance(i, dict) else i for i in reply["deletedItems"]]
+    return out

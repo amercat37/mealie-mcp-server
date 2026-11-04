@@ -362,8 +362,10 @@ def run(mealie: MealieFetcher) -> None:
 
         try:
             r = mealie.create_shopping_list_item(shopping_list_id=lid, note="__test_item__")
-            state["shopping_item_id"] = r.get("id")
-            check("create_shopping_list_item", bool(state.get("shopping_item_id")))
+            # Mealie's full reply: a new note on a new list lands in createdItems
+            created = r.get("createdItems") or []
+            state["shopping_item_id"] = created[0].get("id") if created else None
+            check("create_shopping_list_item", bool(state.get("shopping_item_id")), str(r)[:120])
         except Exception as e:
             check("create_shopping_list_item", False, str(e))
 

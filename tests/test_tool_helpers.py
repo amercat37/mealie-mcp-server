@@ -9,6 +9,7 @@ No live infrastructure — exercises logic against stand-in objects:
 - tag/category lookups by id returning the recipes, like the by-slug lookups
 - shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
+- item adds and edits reporting created / updated / deleted (Mealie merges lines)
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
   partial-failure report
 
@@ -28,6 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mcp.server.fastmcp import FastMCP
 
 from mealie.mealplan import MealplanMixin
+from mealie.shopping_list import merge_item
 from tools.mealplan_tools import register_mealplan_tools
 from tools.categories_tools import register_categories_tools
 from tools.recipe_tools import register_recipe_tools
@@ -221,6 +223,40 @@ class FakeShopping:
 
     def add_recipes_to_shopping_list_bulk(self, list_id, recipes):
         return FULL_LIST
+
+
+TOMATO_ITEM = mealie_item("I3", quantity=2.0, food=TOMATO, display="2 tomatoes", foodId="food-1",
+                          labelId="lab-1", label=LABEL)
+CHECKED_TOMATO = mealie_item("I4", quantity=1.0, food=TOMATO, display="1 tomato", foodId="food-1",
+                             labelId="lab-1", label=LABEL, checked=True)
+
+
+class FakeItemWrites:
+    """Item adds and edits, answering with the reply Mealie gave in the merge probe for
+    each case; records what it was sent."""
+
+    def __init__(self, reply):
+        self.reply, self.sent = reply, []
+
+    def create_shopping_list_item(self, *args):
+        self.sent.append(args)
+        return self.reply
+
+    def create_shopping_list_items_bulk(self, items):
+        self.sent.append(items)
+        return self.reply
+
+    def update_shopping_list_item(self, item_id, data):
+        self.sent.append((item_id, data))
+        return self.reply
+
+    def update_shopping_list_items_bulk(self, items):
+        self.sent.append(items)
+        return self.reply
+
+
+def item_reply(created=(), updated=(), deleted=()):
+    return {"createdItems": list(created), "updatedItems": list(updated), "deletedItems": list(deleted)}
 
 
 class FakeOrganizers:
@@ -466,6 +502,70 @@ def run() -> None:
     check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
           fake.sent == [{"name": "Groceries"}], str(fake.sent))
     check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
+
+    # ------------------------------------------------------------------
+    section("Item adds and edits: created / updated / deleted, trimmed")
+    # ------------------------------------------------------------------
+    tomato = {"id": "I3", "shoppingListId": "L1", "display": "2 tomatoes", "checked": False, "quantity": 2.0,
+              "food": "tomato", "label": "Fruits"}
+    beef = {**TRIMMED_ITEMS[0], "shoppingListId": "L1"}
+    cases = [
+        ("new item", "create_shopping_list_item", {"shopping_list_id": "L1", "note": "beef"},
+         item_reply(created=[BEEF_ITEM]), {"created": [beef]}),
+        ("same food + unit merges into the existing line", "create_shopping_list_item",
+         {"shopping_list_id": "L1", "note": "tomato", "food_id": "food-1"},
+         item_reply(updated=[TOMATO_ITEM]), {"updated": [tomato]}),
+        ("bulk: one new, one merging", "create_shopping_list_items_bulk",
+         {"items": [{"shoppingListId": "L1", "note": "beef"}, {"shoppingListId": "L1", "note": "tomato"}]},
+         item_reply(created=[BEEF_ITEM], updated=[TOMATO_ITEM]), {"created": [beef], "updated": [tomato]}),
+        ("check off an item", "update_shopping_list_item", {"item_id": "I4", "checked": True},
+         item_reply(updated=[CHECKED_TOMATO]),
+         {"updated": [{"id": "I4", "shoppingListId": "L1", "display": "1 tomato", "checked": True,
+                       "quantity": 1.0, "food": "tomato", "label": "Fruits"}]}),
+        ("uncheck merges into the matching line: kept line updated, other line deleted",
+         "update_shopping_list_item", {"item_id": "I4", "checked": False},
+         item_reply(updated=[TOMATO_ITEM], deleted=[CHECKED_TOMATO]), {"updated": [tomato], "deleted": ["I4"]}),
+        ("bulk edit that merges", "update_shopping_list_items_bulk", {"items": [{"id": "I4", "checked": False}]},
+         item_reply(updated=[TOMATO_ITEM], deleted=[CHECKED_TOMATO]), {"updated": [tomato], "deleted": ["I4"]}),
+        ("nothing changed: empty reply", "update_shopping_list_items_bulk", {"items": [{"id": "I4", "checked": False}]},
+         item_reply(), {}),
+    ]
+    for name, tool, args, reply, expected in cases:
+        srv = FastMCP("probe")
+        register_shopping_list_tools(srv, FakeItemWrites(reply))
+        out = call(srv, tool, args)
+        check(f"{tool}: {name}", out == expected, json.dumps(out)[:240])
+    fake = FakeItemWrites(item_reply(updated=[TOMATO_ITEM]))
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    call(srv, "update_shopping_list_item", {"item_id": "I4", "checked": False})
+    check("update_shopping_list_item still sends only the fields given", fake.sent == [("I4", {"checked": False})],
+          str(fake.sent))
+    check("item replies have no nested objects or internal ids",
+          not any(k in json.dumps(call(srv, "update_shopping_list_item", {"item_id": "I4", "checked": True}))
+                  for k in ("groupId", "foodId", "pluralName", "#7CB342")))
+
+    # ------------------------------------------------------------------
+    section("Item edits: merge into the current item for Mealie's full-replace PUT")
+    # ------------------------------------------------------------------
+    current = {"id": "I1", "note": "n", "quantity": 1.0, "checked": False, "unitId": "unit-2", "unit": POUND,
+               "foodId": "food-2", "food": BEEF, "labelId": "lab-2", "label": MEATS}
+    out = merge_item(current, {"checked": True})
+    check("checking off keeps every other field, nested objects included",
+          out == {**current, "checked": True}, str({k: out[k] for k in ("unit", "food", "label") if not out[k]}))
+    out = merge_item(current, {"unitId": "unit-1"})
+    check("a new unitId clears the old nested unit (Mealie read it and failed converting pounds to cups)",
+          out["unitId"] == "unit-1" and out["unit"] is None and out["food"] == BEEF and out["label"] == MEATS)
+    out = merge_item(current, {"foodId": "food-1", "labelId": "lab-1"})
+    check("a new foodId / labelId clears the old food / label",
+          out["food"] is None and out["label"] is None and out["unit"] == POUND)
+    out = merge_item(current, {"unitId": "unit-2"})
+    check("the same unitId keeps the unit", out["unit"] == POUND)
+    out = merge_item(current, {"unitId": "unit-1", "unit": CUP})
+    check("a unit object sent with its id is kept", out["unit"] == CUP)
+    out = merge_item(current, {"unitId": None})
+    check("removing the unit clears the nested unit too", out["unitId"] is None and out["unit"] is None)
+    check("the current item isn't modified", current["unit"] == POUND and current["checked"] is False)
 
     # ------------------------------------------------------------------
     section("Tag and category lookups: by id lists the recipes, like by slug")

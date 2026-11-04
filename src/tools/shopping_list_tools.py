@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
-from trim import trim_shopping_item, trim_shopping_list
+from trim import trim_item_changes, trim_shopping_item, trim_shopping_list
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -380,7 +380,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             label_id: UUID of the label (optional)
 
         Returns:
-            Dict[str, Any]: The created shopping list item
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out.
         """
         try:
             logger.info({
@@ -388,9 +394,9 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "shopping_list_id": shopping_list_id,
                 "note": note,
             })
-            return mealie.create_shopping_list_item(
+            return trim_item_changes(mealie.create_shopping_list_item(
                 shopping_list_id, note, quantity, unit_id, food_id, label_id
-            )
+            ))
         except Exception as e:
             error_msg = f"Error creating shopping list item: {str(e)}"
             logger.error({"message": error_msg})
@@ -412,11 +418,18 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 - food_id (str, optional): UUID of the food
 
         Returns:
-            Dict[str, Any]: Results of the bulk creation operation
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out. Duplicates within the batch
+                are combined into one item.
         """
         try:
             logger.info({"message": "Creating bulk shopping list items", "count": len(items)})
-            return mealie.create_shopping_list_items_bulk(items)
+            return trim_item_changes(mealie.create_shopping_list_items_bulk(items))
         except Exception as e:
             error_msg = f"Error creating bulk shopping list items: {str(e)}"
             logger.error({"message": error_msg})
@@ -439,7 +452,15 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             checked: Whether the item is checked off
 
         Returns:
-            Dict[str, Any]: The updated shopping list item
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out. Unchecking an item, or
+                changing it to match another line, can merge the two: the kept line
+                is under updated and the other's id under deleted.
         """
         try:
             logger.info({"message": "Updating shopping list item", "item_id": item_id})
@@ -455,7 +476,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             if not item_data:
                 raise ValueError("At least one field must be provided to update")
 
-            return mealie.update_shopping_list_item(item_id, item_data)
+            return trim_item_changes(mealie.update_shopping_list_item(item_id, item_data))
         except Exception as e:
             error_msg = f"Error updating shopping list item '{item_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -494,11 +515,18 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             items: List of item dictionaries, each with id and the fields to update
 
         Returns:
-            Dict[str, Any]: Results of the bulk update operation
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out. Unchecking items, or
+                changing them to match other lines, can merge lines.
         """
         try:
             logger.info({"message": "Updating bulk shopping list items", "count": len(items)})
-            return mealie.update_shopping_list_items_bulk(items)
+            return trim_item_changes(mealie.update_shopping_list_items_bulk(items))
         except Exception as e:
             error_msg = f"Error updating bulk shopping list items: {str(e)}"
             logger.error({"message": error_msg})

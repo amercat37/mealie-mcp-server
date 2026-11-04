@@ -812,7 +812,7 @@ async def run(session: ClientSession) -> None:
             food_id = (_mealie.get_foods(per_page=1).get("items") or [{}])[0].get("id")
             item = _mealie.create_shopping_list_item(
                 shopping_list_id=lid, note="__test_bulk_keep__", quantity=3, food_id=food_id
-            )
+            )["createdItems"][0]
             r = await session.call_tool("update_shopping_list_items_bulk", {
                 "items": [{"id": item["id"], "checked": True}]
             })
@@ -909,6 +909,74 @@ async def run(session: ClientSession) -> None:
             state["shopping_list_id"] = None
         except Exception as e:
             check("delete_shopping_list", False, str(e))
+
+    # -----------------------------------------------------------------------
+    section("Shopping list merges — item tools report created / updated / deleted")
+    # -----------------------------------------------------------------------
+    # Mealie merges a matching item into an existing line instead of adding a
+    # second one; the tools must report what really happened. Every case runs on its
+    # own list (swept by name at the end if anything fails).
+    merge_list = None
+    try:
+        merge_list = _mealie.create_shopping_list("__test_merge_list__")["id"]
+        units = _mealie.get_organizer_units(per_page=200)["items"]
+        u1, u2 = units[0], next(u for u in units[1:] if u["name"] != units[0]["name"])
+        f1 = _mealie.get_foods(per_page=1)["items"][0]
+
+        async def tool(name, args):
+            r = await session.call_tool(name, args)
+            return _json.loads(r.content[0].text) if not r.isError else {"error": error_text(r)}
+
+        add = lambda **kw: tool("create_shopping_list_item", {"shopping_list_id": merge_list, "note": "x", **kw})
+        r1 = await add(quantity=1, unit_id=u1["id"], food_id=f1["id"])
+        a = (r1.get("created") or [{}])[0]
+        check("merge: new food + unit is created", set(r1) == {"created"} and a.get("unit") == u1["name"]
+              and a.get("food") == f1["name"] and a.get("shoppingListId") == merge_list, str(r1)[:200])
+        r2 = await add(quantity=2, unit_id=u1["id"], food_id=f1["id"])
+        check("merge: same food + unit is reported as updated, quantities added",
+              set(r2) == {"updated"} and r2["updated"][0]["id"] == a.get("id") and r2["updated"][0]["quantity"] == 3,
+              str(r2)[:200])
+        r3 = await add(quantity=1, unit_id=u2["id"], food_id=f1["id"])
+        b = (r3.get("created") or [{}])[0]
+        check("merge: same food, different unit is a new line", set(r3) == {"created"} and b.get("id") != a.get("id"),
+              str(r3)[:200])
+        await tool("create_shopping_list_item", {"shopping_list_id": merge_list, "note": "__test_merge_note__"})
+        r4 = await tool("create_shopping_list_item", {"shopping_list_id": merge_list, "note": "__test_merge_note__"})
+        check("merge: the same note text is reported as updated",
+              set(r4) == {"updated"} and r4["updated"][0]["quantity"] == 2, str(r4)[:200])
+        r5 = await tool("update_shopping_list_item", {"item_id": b.get("id"), "checked": True})
+        check("check off: updated, checked", set(r5) == {"updated"} and r5["updated"][0]["checked"] is True, str(r5)[:200])
+        r6 = await add(quantity=1, unit_id=u2["id"], food_id=f1["id"])
+        c = (r6.get("created") or [{}])[0]
+        check("merge: a checked line doesn't absorb a new add (new line)", set(r6) == {"created"}, str(r6)[:200])
+        r7 = await tool("update_shopping_list_item", {"item_id": b.get("id"), "checked": False})
+        kept = (r7.get("updated") or [{}])[0]
+        check("uncheck into a matching line: one updated, the other deleted",
+              set(r7) == {"updated", "deleted"} and {kept.get("id"), *r7["deleted"]} == {b.get("id"), c.get("id")}
+              and kept.get("quantity") == 2, str(r7)[:200])
+        r8 = await tool("create_shopping_list_items_bulk", {"items": [
+            {"shoppingListId": merge_list, "note": "__test_merge_dup__"},
+            {"shoppingListId": merge_list, "note": "__test_merge_dup__"},
+            {"shoppingListId": merge_list, "note": "x", "quantity": 1, "unitId": u1["id"], "foodId": f1["id"]},
+        ]})
+        check("bulk add: in-batch duplicates combine (created), a matching item merges (updated)",
+              [i["quantity"] for i in r8.get("created", [])] == [2]
+              and [(i["id"], i["quantity"]) for i in r8.get("updated", [])] == [(a.get("id"), 4)], str(r8)[:240])
+        r9 = await tool("update_shopping_list_items_bulk", {"items": [{"id": kept.get("id"), "unitId": u1["id"]}]})
+        check("bulk edit: changing a line's unit to match another merges them (no 500)",
+              "error" not in r9 and [i["id"] for i in r9.get("updated", [])] == [a.get("id")]
+              and r9.get("deleted") == [kept.get("id")] and r9["updated"][0]["quantity"] == 6, str(r9)[:240])
+        raw = _mealie.get_shopping_list(merge_list)["listItems"]
+        check("merge list ends with three lines (food+unit, note, combined duplicate)",
+              len(raw) == 3, str([i.get("display") for i in raw]))
+    except Exception as e:
+        check("shopping list merges", False, repr(e))
+    finally:
+        if merge_list:
+            try:
+                _mealie.delete_shopping_list(merge_list)
+            except Exception:
+                pass
 
     # -----------------------------------------------------------------------
     section("Meal Plans")

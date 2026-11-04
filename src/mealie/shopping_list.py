@@ -6,6 +6,22 @@ from utils import format_api_params
 logger = logging.getLogger("mealie-mcp")
 
 
+# A changed id must not travel with the old nested object it replaces: Mealie reads
+# the nested unit, so a new unitId beside the old unit tried to convert e.g. pounds to
+# cups and failed with a 500
+LINKED_OBJECTS = (("unitId", "unit"), ("foodId", "food"), ("labelId", "label"))
+
+
+def merge_item(current: Dict[str, Any], changes: Dict[str, Any]) -> Dict[str, Any]:
+    """The current item with the changes applied, for Mealie's PUT (which replaces the
+    whole item). A changed unitId/foodId/labelId clears the old nested object."""
+    merged = {**current, **changes}
+    for id_field, object_field in LINKED_OBJECTS:
+        if id_field in changes and object_field not in changes and changes[id_field] != current.get(id_field):
+            merged[object_field] = None
+    return merged
+
+
 class ShoppingListMixin:
     """Mixin class for shopping list-related API endpoints"""
 
@@ -249,7 +265,8 @@ class ShoppingListMixin:
             label_id: UUID of the label
 
         Returns:
-            JSON response containing the created shopping list item
+            Mealie's reply: createdItems, updatedItems and deletedItems. Mealie merges
+            an item into a matching line, so the item can come back as updated
         """
         if not shopping_list_id:
             raise ValueError("Shopping list ID cannot be empty")
@@ -271,11 +288,7 @@ class ShoppingListMixin:
             payload["labelId"] = label_id
 
         logger.info({"message": "Creating shopping list item", "note": note})
-        result = self._handle_request("POST", "/api/households/shopping/items", json=payload)
-        if isinstance(result, dict) and "createdItems" in result:
-            items = result["createdItems"]
-            return items[0] if items else result
-        return result
+        return self._handle_request("POST", "/api/households/shopping/items", json=payload)
 
     def create_shopping_list_items_bulk(
         self,
@@ -337,7 +350,7 @@ class ShoppingListMixin:
         current_item = self._handle_request("GET", f"/api/households/shopping/items/{item_id}")
 
         # Merge updates into current item
-        merged_data = {**current_item, **item_data}
+        merged_data = merge_item(current_item, item_data)
 
         return self._handle_request("PUT", f"/api/households/shopping/items/{item_id}", json=merged_data)
 
@@ -366,7 +379,7 @@ class ShoppingListMixin:
         logger.info({"message": "Updating bulk shopping list items", "count": len(items)})
         # Fetch every item before sending anything, so an unknown id changes nothing
         merged = [
-            {**self._handle_request("GET", f"/api/households/shopping/items/{item['id']}"), **item}
+            merge_item(self._handle_request("GET", f"/api/households/shopping/items/{item['id']}"), item)
             for item in items
         ]
         return self._handle_request("PUT", "/api/households/shopping/items", json=merged)
