@@ -163,7 +163,7 @@ cookbook="the-autoimmune-solution"
 
 ### get_recipes — GET /api/recipes
 
-Lists and searches recipes with optional filtering. Always use slugs when filtering by tag or category, not display names.
+Lists and searches recipes with optional filtering. Always use slugs when filtering by tag or category, not display names. Each recipe comes back as a short card — id, name, slug, description, tag/category/tool slugs, times, servings, yield, rating and dates — without ingredients or instructions.
 
 ```
 "Show me all my recipes"
@@ -196,7 +196,7 @@ Lists and searches recipes with optional filtering. Always use slugs when filter
 
 ### get_recipe_detailed — GET /api/recipes/{slug}
 
-Returns the full recipe including all ingredients with quantities and units, step-by-step instructions, nutrition info, notes, assets, and metadata. Use this when you need everything — cooking, nutrition calculation, sharing.
+Returns the full recipe including all ingredients with quantities and units, step-by-step instructions, nutrition info, notes, and metadata. Ingredients give the food, unit and store section (label) by name; tags, categories and tools are slugs. Use this when you need everything — cooking, nutrition calculation, sharing.
 
 ```
 "Show me the full lasagna recipe"

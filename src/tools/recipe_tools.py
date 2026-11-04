@@ -7,8 +7,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
-from models.recipe import Recipe, RecipeCreate
+from models.recipe import RecipeCreate
 from recipe_times import add_readable_times
+from trim import trim_recipe_concise, trim_recipe_detail, trim_recipe_summary
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -53,9 +54,14 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             require_all_categories: If True, recipe must have ALL specified categories (AND).
 
         Returns:
-            Dict[str, Any]: Recipe summaries with details like ID, name, description, and image information.
-                prepTime/performTime/totalTime are readable text ("1 hour 30 minutes");
-                the *TimeSeconds fields hold the same times as numbers for comparisons.
+            Dict[str, Any]: Pagination fields and items, one short entry per recipe: id
+                (use it as recipe_id in meal plans and shopping lists), name, slug,
+                description, tags / recipeCategory / tools as slugs, prepTime/performTime/
+                totalTime as readable text ("1 hour 30 minutes") plus *TimeSeconds as
+                numbers for comparisons, recipeServings, recipeYieldQuantity + recipeYield,
+                rating (if set), dateAdded, dateUpdated. Ingredients and instructions are
+                not included: use get_recipe_concise (ingredients) or get_recipe_detailed
+                (everything) for a chosen recipe.
         """
         try:
             logger.info(
@@ -79,8 +85,9 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 require_all_tags=require_all_tags,
                 require_all_categories=require_all_categories,
             )
-            for item in result.get("items", []):
-                add_readable_times(item)
+            result["items"] = [
+                trim_recipe_summary(add_readable_times(item)) for item in result.get("items", [])
+            ]
             return result
         except Exception as e:
             error_msg = f"Error fetching recipes: {str(e)}"
@@ -100,15 +107,19 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 or from get_recipes results.
 
         Returns:
-            Dict[str, Any]: Comprehensive recipe details including ingredients, instructions,
-                nutrition information, notes, and associated metadata. prepTime/performTime/
-                totalTime are readable text; the *TimeSeconds fields hold the same times as
-                numbers. lastMade is the household's last made date (null if never made).
+            Dict[str, Any]: The whole recipe: ingredients, instructions, nutrition, notes,
+                description, servings and yield, rating, orgURL (where it was imported
+                from), dates, and tags / recipeCategory / tools as slugs. Each ingredient
+                gives food, unit and label (store section) as names, plus quantity, note,
+                display (the full line as text) and referenceId (instruction steps link to
+                ingredients by it). prepTime/performTime/totalTime are readable text; the
+                *TimeSeconds fields hold the same times as numbers. lastMade is the
+                household's last made date (null if never made).
         """
         try:
             logger.info({"message": "Fetching recipe", "slug": slug})
             recipe_json = add_readable_times(mealie.get_recipe(slug))
-            return add_last_made(slug, recipe_json)
+            return trim_recipe_detail(add_last_made(slug, recipe_json))
         except Exception as e:
             error_msg = f"Error fetching recipe with slug '{slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -127,26 +138,15 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 or from get_recipes results.
 
         Returns:
-            Dict[str, Any]: Concise recipe summary with essential fields.
+            Dict[str, Any]: name, slug, recipeServings, recipeYieldQuantity + recipeYield,
+                totalTime, rating and lastMade (when set), and recipeIngredient: each
+                ingredient's food, unit and label (store section) as names, plus quantity,
+                note and display (the full line as text).
         """
         try:
             logger.info({"message": "Fetching recipe", "slug": slug})
             recipe_json = add_last_made(slug, add_readable_times(mealie.get_recipe(slug)))
-            recipe = Recipe.model_validate(recipe_json)
-            return recipe.model_dump(
-                include={
-                    "name",
-                    "slug",
-                    "recipeServings",
-                    "recipeYieldQuantity",
-                    "recipeYield",
-                    "totalTime",
-                    "rating",
-                    "recipeIngredient",
-                    "lastMade",
-                },
-                exclude_none=True,
-            )
+            return trim_recipe_concise(recipe_json)
         except Exception as e:
             error_msg = f"Error fetching recipe with slug '{slug}': {str(e)}"
             logger.error({"message": error_msg})

@@ -5,6 +5,7 @@ No live infrastructure — exercises logic against stand-in objects:
 - whole-week meal plan alignment for every household firstDayOfWeek setting
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
+- recipe read tools trimming Mealie's nested copies (get_recipes, concise, detailed)
 - shopping list tools trimming recipeReferences
 - reordering a shopping list's sections by label name
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
@@ -54,6 +55,61 @@ class FakeMealplan(MealplanMixin):
         return {"firstDayOfWeek": self.first_day}
 
 
+def organizer(name, slug, **extra):
+    return {"id": f"id-{slug}", "groupId": "g", "name": name, "slug": slug, "recipeCount": 0, **extra}
+
+
+LABEL = {"name": "Fruits", "color": "#7CB342", "groupId": "g", "id": "lab-1"}
+TOMATO = {"id": "food-1", "name": "tomato", "pluralName": "tomatoes", "description": "", "extras": {},
+          "labelId": "lab-1", "aliases": [], "substitutions": [], "householdsWithIngredientFood": [],
+          "label": LABEL, "recipeCount": 0, "createdAt": "2026-04-13", "updatedAt": "2026-04-13"}
+CUP = {"id": "unit-1", "name": "cup", "pluralName": "cups", "description": "", "extras": {}, "fraction": True,
+       "abbreviation": "c", "pluralAbbreviation": "", "useAbbreviation": False, "aliases": [],
+       "standardQuantity": 1.0, "standardUnit": "cup", "createdAt": "2026-04-13", "updatedAt": "2026-04-13"}
+
+# A recipe as Mealie v3.30 returns it, with the nested copies the read tools trim
+MEALIE_RECIPE = {
+    "id": "1", "userId": "u", "householdId": "h", "groupId": "g",
+    "name": "Chili Sauce", "slug": "chili", "image": "abc",
+    "recipeServings": 4.0, "recipeYieldQuantity": 0.0, "recipeYield": "",
+    "prepTime": None, "prepTimeSeconds": 3600,
+    "performTime": None, "performTimeSeconds": 7200,
+    "totalTime": None, "totalTimeSeconds": 10800, "cookTime": None,
+    "description": "Sweet and spicy.", "rating": None, "orgURL": "https://example.com/chili",
+    "recipeCategory": [organizer("Sauce", "sauce")],
+    "tags": [organizer("Gluten Free", "gluten-free"), organizer("Spicy", "spicy")],
+    "tools": [organizer("Food Processor", "food-processor", householdsWithTool=["allen"])],
+    "dateAdded": "2026-01-01", "dateUpdated": "2026-01-02T10:00:00Z",
+    "createdAt": "2026-01-01", "updatedAt": "2026-01-02",
+    "recipeIngredient": [
+        {"quantity": 0.0, "unit": None, "food": None, "referencedRecipe": None, "note": "",
+         "display": "", "title": "For the sauce", "originalText": None, "substitutions": [],
+         "referenceId": "ref-0"},
+        {"quantity": 2.0, "unit": CUP, "food": TOMATO, "referencedRecipe": None, "note": "chopped",
+         "display": "2 cups tomato chopped", "title": None, "originalText": None,
+         "substitutions": [{"quantity": 1.0, "unit": None, "food": TOMATO, "note": "canned",
+                            "display": "1 tomato canned", "referenceId": "ref-1s"}],
+         "referenceId": "ref-1"},
+        {"quantity": 1.0, "unit": None, "food": None, "note": "pinch of salt", "display": "1 pinch of salt",
+         "title": None, "referencedRecipe": None, "substitutions": [], "referenceId": "ref-2"},
+        {"quantity": 1.0, "unit": None, "food": None, "note": "", "display": "1 Garlic Paste",
+         "title": None, "referencedRecipe": {"id": "r2", "name": "Garlic Paste", "slug": "garlic-paste",
+                                             "tags": [organizer("Base", "base")]},
+         "substitutions": [], "referenceId": "ref-3"},
+    ],
+    "recipeInstructions": [
+        {"id": "s1", "title": "", "summary": "", "text": "Chop the tomatoes.",
+         "ingredientReferences": [{"referenceId": "ref-1"}], "noteReferences": [], "durationSeconds": None},
+        {"id": "s2", "title": "Cook", "summary": "", "text": "Simmer.", "ingredientReferences": [],
+         "noteReferences": [], "durationSeconds": 600},
+    ],
+    "nutrition": {"calories": "90", "fatContent": None},
+    "settings": {"public": False, "showNutrition": True},
+    "assets": [], "notes": [{"title": "Tip", "text": "Keeps a week."}], "extras": {}, "comments": [],
+    "futureField": "kept",
+}
+
+
 class FakeRecipes:
     """Stands in for MealieFetcher in the recipe tools."""
 
@@ -61,15 +117,14 @@ class FakeRecipes:
         self.last_made_error = last_made_error
 
     def get_recipe(self, slug):
-        return {
-            "id": "1", "userId": "u", "householdId": "h", "groupId": "g",
-            "name": "Chili Sauce", "slug": slug,
-            "dateAdded": "2026-01-01", "dateUpdated": "2026-01-01",
-            "createdAt": "2026-01-01", "updatedAt": "2026-01-01",
-            "prepTime": None, "prepTimeSeconds": 3600,
-            "performTime": None, "performTimeSeconds": 7200,
-            "totalTime": None, "totalTimeSeconds": 10800,
-        }
+        return {**json.loads(json.dumps(MEALIE_RECIPE)), "slug": slug}
+
+    def get_recipes(self, **kwargs):
+        summary = {k: v for k, v in MEALIE_RECIPE.items()
+                   if k not in ("recipeIngredient", "recipeInstructions", "nutrition", "settings",
+                                "assets", "notes", "extras", "comments")}
+        return {"page": 1, "per_page": 50, "total": 1, "total_pages": 1, "next": None,
+                "previous": None, "items": [json.loads(json.dumps(summary))]}
 
     def get_household_recipe(self, slug):
         if self.last_made_error:
@@ -237,6 +292,66 @@ def run() -> None:
               d.get("name") == "Chili Sauce" and d.get("totalTime") == "3 hours", str(d))
     except Exception as e:
         check("detailed: failed lastMade lookup still returns the recipe", False, repr(e))
+
+    # ------------------------------------------------------------------
+    section("Recipe read tools: trimmed output")
+    # ------------------------------------------------------------------
+    srv = FastMCP("probe")
+    register_recipe_tools(srv, FakeRecipes(last_made_error=False))
+    out = call(srv, "get_recipes", {})
+    check("get_recipes keeps the pagination fields",
+          {k: out.get(k) for k in ("page", "per_page", "total", "total_pages")}
+          == {"page": 1, "per_page": 50, "total": 1, "total_pages": 1}, str(out)[:200])
+    summary = out["items"][0]
+    check("get_recipes: one short card per recipe, in order",
+          summary == {
+              "id": "1", "name": "Chili Sauce", "slug": "chili", "description": "Sweet and spicy.",
+              "tags": ["gluten-free", "spicy"], "recipeCategory": ["sauce"], "tools": ["food-processor"],
+              "prepTime": "1 hour", "prepTimeSeconds": 3600, "performTime": "2 hours",
+              "performTimeSeconds": 7200, "totalTime": "3 hours", "totalTimeSeconds": 10800,
+              "recipeServings": 4.0, "dateAdded": "2026-01-01", "dateUpdated": "2026-01-02T10:00:00Z",
+          }, json.dumps(summary))
+
+    d = call(srv, "get_recipe_detailed", {"slug": "chili"})
+    dropped = [k for k in ("userId", "groupId", "householdId", "createdAt", "updatedAt", "image",
+                           "cookTime", "extras", "settings", "comments", "assets") if k in d]
+    check("detailed: internal and duplicate fields dropped", not dropped, str(dropped))
+    check("detailed: orgURL, notes, nutrition, lastMade and unknown new fields kept",
+          d.get("orgURL") == "https://example.com/chili" and d.get("notes") == MEALIE_RECIPE["notes"]
+          and d.get("nutrition") == MEALIE_RECIPE["nutrition"] and d.get("lastMade") == "2026-11-01T18:00:00Z"
+          and d.get("futureField") == "kept", str({k: d.get(k) for k in ("orgURL", "lastMade", "futureField")}))
+    check("detailed: tags / recipeCategory / tools as slugs",
+          (d.get("tags"), d.get("recipeCategory"), d.get("tools"))
+          == (["gluten-free", "spicy"], ["sauce"], ["food-processor"]), str(d.get("tags")))
+    expected_ingredients = [
+        {"title": "For the sauce", "referenceId": "ref-0"},
+        {"quantity": 2.0, "note": "chopped", "display": "2 cups tomato chopped", "referenceId": "ref-1",
+         "unit": "cup", "food": "tomato", "label": "Fruits",
+         "substitutions": [{"quantity": 1.0, "note": "canned", "display": "1 tomato canned",
+                            "referenceId": "ref-1s", "food": "tomato", "label": "Fruits"}]},
+        {"quantity": 1.0, "note": "pinch of salt", "display": "1 pinch of salt", "referenceId": "ref-2"},
+        {"quantity": 1.0, "display": "1 Garlic Paste", "referenceId": "ref-3", "referencedRecipe": "garlic-paste"},
+    ]
+    check("detailed: ingredients as names (section header, food+unit+label, note-only, sub-recipe)",
+          d.get("recipeIngredient") == expected_ingredients, json.dumps(d.get("recipeIngredient")))
+    check("detailed: instruction steps without empty fields, links to ingredients kept",
+          d.get("recipeInstructions") == [
+              {"id": "s1", "text": "Chop the tomatoes.", "ingredientReferences": [{"referenceId": "ref-1"}]},
+              {"id": "s2", "title": "Cook", "text": "Simmer.", "durationSeconds": 600},
+          ], json.dumps(d.get("recipeInstructions")))
+
+    c = call(srv, "get_recipe_concise", {"slug": "chili"})
+    check("concise: name, amounts, totalTime, lastMade and trimmed ingredients",
+          c == {"name": "Chili Sauce", "slug": "chili", "recipeServings": 4.0, "totalTime": "3 hours",
+                "lastMade": "2026-11-01T18:00:00Z", "recipeIngredient": expected_ingredients}, json.dumps(c))
+    everything = json.dumps([out, d, c])
+    check("no recipeCount, groupId or nested food/unit objects left in any recipe tool",
+          "recipeCount" not in everything and "groupId" not in everything
+          and "pluralName" not in everything and "#7CB342" not in everything)
+    raw = json.dumps(MEALIE_RECIPE)
+    check("trimming leaves Mealie's data untouched",
+          json.dumps(FakeRecipes(False).get_recipe("chili")) == json.dumps({**MEALIE_RECIPE, "slug": "chili"})
+          and raw == json.dumps(MEALIE_RECIPE))
 
     # ------------------------------------------------------------------
     section("Shopping list tools trim recipeReferences")

@@ -4,6 +4,25 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [1.0.25] — 2026-11-04
+
+Smaller tool output. Mealie nests full copies of tags, categories, tools, foods, units and labels — each with internal ids, timestamps and a `recipeCount` that is always 0 on these copies — inside recipes, list items and meal plan entries. The tools now return what an assistant needs.
+
+### Changed
+
+- **Recipe read tools return trimmed recipes** (`src/trim.py`). Measured on 41 recipes:
+  - `get_recipes`: about 121K → 33K characters. Each recipe is a short card: id, name, slug, description, tags / recipeCategory / tools as slugs, readable times plus seconds, servings, yield, rating, dateAdded, dateUpdated. Tag objects alone were half the old size.
+  - `get_recipe_concise` (about 7.7K → 1.9K per recipe) and `get_recipe_detailed` (about 14K → 4K; largest 32K → 11K): each ingredient gives food, unit and label (store section) as names, plus quantity, note, display and referenceId, instead of full food and unit objects. Detailed also lists organizers as slugs, drops empty instruction fields and internal fields (userId, groupId, householdId, createdAt, updatedAt, image, cookTime, extras, settings, comments, assets), and keeps orgURL, nutrition, notes and lastMade.
+- Removed the unused read models (`Recipe`, `RecipeIngredient`, `IngredientFood`, …) from `src/models/recipe.py`.
+
+### Tests
+
+- `tests/test_tool_helpers.py` — the three recipe read tools against a realistic Mealie recipe (nested food/unit/label/tag objects, a section header, a note-only line, a sub-recipe, a substitution, empty instruction fields, an unknown new field).
+- `tests/test_mcp_server.py` — live: `get_recipes` returns only card fields with slug organizers; detailed and concise ingredients are trimmed and agree; no `recipeCount` left.
+- `tests/test_recipe_create_fix.py`, `tests/LLM_PROMPT_CREATE.md` — categories are read as slugs.
+
+---
+
 ## [1.0.24] — 2026-11-03
 
 Follow-ups from the v1.0.23 assistant test runs.

@@ -383,6 +383,38 @@ async def run(session: ClientSession) -> None:
     except Exception as e:
         check("recipe time round-trip", False, str(e))
 
+    # The read tools trim Mealie's nested copies: organizers as slugs, ingredient
+    # food/unit/label as names, no internal ids (checked on real recipes)
+    try:
+        r = await session.call_tool("get_recipes", {"per_page": 50})
+        items = _json.loads(r.content[0].text).get("items", [])
+        allowed = {"id", "name", "slug", "description", "tags", "recipeCategory", "tools",
+                   "prepTime", "prepTimeSeconds", "performTime", "performTimeSeconds", "totalTime",
+                   "totalTimeSeconds", "recipeServings", "recipeYieldQuantity", "recipeYield", "rating",
+                   "dateAdded", "dateUpdated"}
+        extra = sorted({k for i in items for k in i} - allowed)
+        check("get_recipes returns only the short card fields", bool(items) and not extra, f"extra={extra}")
+        check("get_recipes organizers are slugs",
+              all(isinstance(s, str) for i in items for k in ("tags", "recipeCategory", "tools") for s in i[k]))
+        with_ingredients = next((i["slug"] for i in items
+                                 if _mealie.get_recipe(i["slug"]).get("recipeIngredient")), None)
+        d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": with_ingredients})).content[0].text)
+        c = _json.loads((await session.call_tool("get_recipe_concise", {"slug": with_ingredients})).content[0].text)
+        ingredient_keys = {"title", "quantity", "note", "display", "referenceId", "unit", "food", "label",
+                           "referencedRecipe", "substitutions"}
+        bad = [i for i in d["recipeIngredient"] + c["recipeIngredient"]
+               if set(i) - ingredient_keys or any(isinstance(i.get(k), dict) for k in ("unit", "food", "label"))]
+        check("detailed/concise ingredients are trimmed (names, no nested objects)",
+              bool(d["recipeIngredient"]) and not bad, str(bad[:1]))
+        check("detailed and concise agree on the ingredients", d["recipeIngredient"] == c["recipeIngredient"])
+        check("detailed drops internal fields, keeps the recipe",
+              not {"userId", "groupId", "householdId", "createdAt", "updatedAt", "settings", "comments"} & set(d)
+              and {"id", "name", "slug", "recipeInstructions", "nutrition", "lastMade"} <= set(d), sorted(d))
+        sizes = {t: len(_json.dumps(x)) for t, x in (("list", items), ("detailed", d), ("concise", c))}
+        check("no recipeCount left in the recipe tools", "recipeCount" not in _json.dumps([items, d, c]), str(sizes))
+    except Exception as e:
+        check("recipe read tools trim output", False, repr(e))
+
     # A unit-less time is rejected before anything is created
     try:
         r = await session.call_tool("create_recipe", {
