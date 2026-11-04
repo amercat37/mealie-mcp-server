@@ -6,29 +6,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
+from trim import trim_shopping_item, trim_shopping_list
 
 logger = logging.getLogger("mealie-mcp")
-
-
-def trim_recipe_references(shopping_list: Any) -> Any:
-    """Shrink a shopping list's recipeReferences to what identifies each recipe.
-
-    Mealie embeds a full recipe summary in every reference (tags, categories,
-    description, ...), most of the list's size and none of it needed to work with
-    the list. Only the tool output is trimmed — never data sent back to Mealie.
-    """
-    if isinstance(shopping_list, dict) and isinstance(shopping_list.get("recipeReferences"), list):
-        trimmed = []
-        for ref in shopping_list["recipeReferences"]:
-            recipe = ref.get("recipe") or {}
-            trimmed.append({
-                "recipeId": ref.get("recipeId"),
-                "name": recipe.get("name"),
-                "slug": recipe.get("slug"),
-                "recipeQuantity": ref.get("recipeQuantity"),
-            })
-        shopping_list = {**shopping_list, "recipeReferences": trimmed}
-    return shopping_list
 
 
 def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
@@ -48,13 +28,15 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             per_page: Number of items per page
 
         Returns:
-            Dict[str, Any]: Shopping lists with pagination information
+            Dict[str, Any]: Pagination fields and items: each list's id, name,
+                labelOrder (its section names in order) and recipeReferences. Items
+                aren't included here; use get_shopping_list for a list's items.
         """
         try:
             logger.info({"message": "Fetching shopping lists", "page": page, "per_page": per_page})
             result = mealie.get_shopping_lists(page=page, per_page=per_page)
             if isinstance(result, dict) and isinstance(result.get("items"), list):
-                result = {**result, "items": [trim_recipe_references(i) for i in result["items"]]}
+                result = {**result, "items": [trim_shopping_list(i) for i in result["items"]]}
             return result
         except Exception as e:
             error_msg = f"Error fetching shopping lists: {str(e)}"
@@ -74,7 +56,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Creating shopping list", "name": name})
-            return trim_recipe_references(mealie.create_shopping_list(name))
+            return trim_shopping_list(mealie.create_shopping_list(name))
         except Exception as e:
             error_msg = f"Error creating shopping list '{name}': {str(e)}"
             logger.error({"message": error_msg})
@@ -89,13 +71,16 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             list_id: The UUID of the shopping list
 
         Returns:
-            Dict[str, Any]: The shopping list details including all items. Recipes on
-                the list (recipeReferences) are summarized as recipeId, name, slug and
-                recipeQuantity; use get_recipe_detailed for a recipe's full details.
+            Dict[str, Any]: id, name, labelOrder (section names in the list's order),
+                recipeReferences (each recipe on the list: recipeId, name, slug,
+                recipeQuantity) and listItems. Each item: id, display (the line as
+                text), checked, quantity, unit, food, label (its store section), note,
+                and recipeIds (the recipes it came from). Use get_recipe_detailed for a
+                recipe's full details.
         """
         try:
             logger.info({"message": "Fetching shopping list", "list_id": list_id})
-            return trim_recipe_references(mealie.get_shopping_list(list_id))
+            return trim_shopping_list(mealie.get_shopping_list(list_id))
         except Exception as e:
             error_msg = f"Error fetching shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -115,7 +100,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Updating shopping list", "list_id": list_id})
-            return trim_recipe_references(mealie.update_shopping_list(list_id, {"name": name}))
+            return trim_shopping_list(mealie.update_shopping_list(list_id, {"name": name}))
         except Exception as e:
             error_msg = f"Error updating shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -234,7 +219,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "count": len(recipes),
             })
-            return trim_recipe_references(mealie.add_recipes_to_shopping_list_bulk(list_id, recipes))
+            return trim_shopping_list(mealie.add_recipes_to_shopping_list_bulk(list_id, recipes))
         except Exception as e:
             error_msg = f"Error bulk adding recipes to shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -253,7 +238,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Deleting shopping list", "list_id": list_id})
-            return trim_recipe_references(mealie.delete_shopping_list(list_id))
+            return trim_shopping_list(mealie.delete_shopping_list(list_id))
         except Exception as e:
             error_msg = f"Error deleting shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -282,7 +267,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "recipe_id": recipe_id,
             })
-            return trim_recipe_references(mealie.add_recipe_to_shopping_list(
+            return trim_shopping_list(mealie.add_recipe_to_shopping_list(
                 list_id, recipe_id, recipe_increment_quantity
             ))
         except Exception as e:
@@ -311,7 +296,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "recipe_id": recipe_id,
             })
-            return trim_recipe_references(mealie.remove_recipe_from_shopping_list(list_id, recipe_id))
+            return trim_shopping_list(mealie.remove_recipe_from_shopping_list(list_id, recipe_id))
         except Exception as e:
             error_msg = f"Error removing recipe from shopping list: {str(e)}"
             logger.error({"message": error_msg})
@@ -334,7 +319,9 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             search: Search term to filter items
 
         Returns:
-            Dict[str, Any]: Shopping list items with pagination information
+            Dict[str, Any]: Pagination fields and items, across all lists: each item's
+                id, shoppingListId, display, checked, quantity, unit, food, label,
+                note and recipeIds
         """
         try:
             logger.info({
@@ -343,9 +330,10 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "per_page": per_page,
                 "search": search,
             })
-            return mealie.get_shopping_list_items(
-                page=page, per_page=per_page, search=search
-            )
+            result = mealie.get_shopping_list_items(page=page, per_page=per_page, search=search)
+            if isinstance(result, dict) and isinstance(result.get("items"), list):
+                result = {**result, "items": [trim_shopping_item(i, with_list_id=True) for i in result["items"]]}
+            return result
         except Exception as e:
             error_msg = f"Error fetching shopping list items: {str(e)}"
             logger.error({"message": error_msg})
@@ -360,11 +348,12 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             item_id: The UUID of the shopping list item
 
         Returns:
-            Dict[str, Any]: The shopping list item details
+            Dict[str, Any]: The item's id, shoppingListId, display, checked, quantity,
+                unit, food, label, note and recipeIds
         """
         try:
             logger.info({"message": "Fetching shopping list item", "item_id": item_id})
-            return mealie.get_shopping_list_item(item_id)
+            return trim_shopping_item(mealie.get_shopping_list_item(item_id), with_list_id=True)
         except Exception as e:
             error_msg = f"Error fetching shopping list item '{item_id}': {str(e)}"
             logger.error({"message": error_msg})

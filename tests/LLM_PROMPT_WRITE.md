@@ -32,7 +32,7 @@ create_recipe_share_token, or mark_recipe_last_made.
 8. remove_recipe_from_shopping_list: remove that recipe again
 9. add_recipes_to_shopping_list_bulk: add that same recipe, then remove it again
 10. Call get_labels, then get_shopping_list on the test list and note its current section order
-    (labelSettings by position). Call update_shopping_list_label_settings with the **last three**
+    (its labelOrder). Call update_shopping_list_label_settings with the **last three**
     label names of that order, in reverse, spelled exactly as get_labels returns them
     → the returned labelOrder starts with those three, and every other label keeps its previous
     relative order

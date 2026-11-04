@@ -13,6 +13,7 @@ Smaller tool output. Mealie nests full copies of tags, categories, tools, foods,
 - **Recipe read tools return trimmed recipes** (`src/trim.py`). Measured on 41 recipes:
   - `get_recipes`: about 121K → 33K characters. Each recipe is a short card: id, name, slug, description, tags / recipeCategory / tools as slugs, readable times plus seconds, servings, yield, rating, dateAdded, dateUpdated. Tag objects alone were half the old size.
   - `get_recipe_concise` (about 7.7K → 1.9K per recipe) and `get_recipe_detailed` (about 14K → 4K; largest 32K → 11K): each ingredient gives food, unit and label (store section) as names, plus quantity, note, display and referenceId, instead of full food and unit objects. Detailed also lists organizers as slugs, drops empty instruction fields and internal fields (userId, groupId, householdId, createdAt, updatedAt, image, cookTime, extras, settings, comments, assets), and keeps orgURL, nutrition, notes and lastMade.
+- **Shopping list tools return trimmed lists and items.** Measured on a 15-item list: `get_shopping_list` about 46K → 5K characters. A list is `{id, name, labelOrder, recipeReferences, listItems}`: `labelOrder` is the section names in order (was 34 full label-setting objects), and each item is `{id, display, checked, quantity, unit, food, label, note, recipeIds}` with names instead of full food, unit and label objects. `get_shopping_lists` shows each list without items (Mealie's summaries have none); `get_shopping_list_items` and `get_shopping_list_item` return trimmed items with their `shoppingListId`. Replaces the PR #33 recipe-reference trimming, which this includes.
 - Removed the unused read models (`Recipe`, `RecipeIngredient`, `IngredientFood`, …) from `src/models/recipe.py`.
 
 ### Tests
@@ -20,6 +21,8 @@ Smaller tool output. Mealie nests full copies of tags, categories, tools, foods,
 - `tests/test_tool_helpers.py` — the three recipe read tools against a realistic Mealie recipe (nested food/unit/label/tag objects, a section header, a note-only line, a sub-recipe, a substitution, empty instruction fields, an unknown new field).
 - `tests/test_mcp_server.py` — live: `get_recipes` returns only card fields with slug organizers; detailed and concise ingredients are trimmed and agree; no `recipeCount` left.
 - `tests/test_recipe_create_fix.py`, `tests/LLM_PROMPT_CREATE.md` — categories are read as slugs.
+- `tests/test_tool_helpers.py` — every shopping list tool against a realistic Mealie list (label settings out of position order, nested food/unit/label objects, a checked note-only item, an item from a recipe).
+- `tests/test_mcp_server.py` — live: list items trimmed with names, items keep the recipes they came from, `labelOrder` matches the list's section order, `get_shopping_list_items` trimmed. `tests/LLM_PROMPT_WRITE.md` step 10 reads `labelOrder`.
 
 ---
 

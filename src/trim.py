@@ -113,3 +113,61 @@ def trim_recipe_concise(recipe: Dict[str, Any]) -> Dict[str, Any]:
             out[field] = recipe[field]
     out["recipeIngredient"] = [trim_ingredient(i) for i in recipe.get("recipeIngredient") or []]
     return out
+
+
+def trim_shopping_item(item: Dict[str, Any], with_list_id: bool = False) -> Dict[str, Any]:
+    """A shopping list item: what it is, whether it's checked, and its store section.
+
+    recipeIds lists the recipes the item came from (their names are in the list's
+    recipeReferences). with_list_id adds shoppingListId, for items read outside a list.
+    """
+    out: Dict[str, Any] = {"id": item.get("id")}
+    if with_list_id:
+        out["shoppingListId"] = item.get("shoppingListId")
+    out["display"] = item.get("display")
+    out["checked"] = bool(item.get("checked"))
+    if item.get("quantity"):
+        out["quantity"] = item["quantity"]
+    for field in ("unit", "food", "label"):
+        if item.get(field):
+            out[field] = name_of(item[field])
+    if present(item.get("note")):
+        out["note"] = item["note"]
+    if item.get("referencedRecipe"):
+        ref = item["referencedRecipe"]
+        out["referencedRecipe"] = ref.get("slug") if isinstance(ref, dict) else ref
+    recipe_ids = [ref.get("recipeId") for ref in item.get("recipeReferences") or [] if ref.get("recipeId")]
+    if recipe_ids:
+        out["recipeIds"] = recipe_ids
+    return out
+
+
+def trim_shopping_list(shopping_list: Any) -> Any:
+    """A shopping list: id, name, labelOrder (section names in the list's order),
+    recipeReferences (recipeId, name, slug, recipeQuantity) and trimmed listItems.
+
+    Mealie embeds a full recipe summary in every recipe reference and full food, unit
+    and label objects in every item. A part Mealie didn't send (list summaries have no
+    listItems) is left out. Only tool output is trimmed — never data sent to Mealie.
+    """
+    if not isinstance(shopping_list, dict):
+        return shopping_list
+    out: Dict[str, Any] = {"id": shopping_list.get("id"), "name": shopping_list.get("name")}
+    if isinstance(shopping_list.get("labelSettings"), list):
+        out["labelOrder"] = [
+            name_of(setting.get("label"))
+            for setting in sorted(shopping_list["labelSettings"], key=lambda s: s.get("position", 0))
+        ]
+    if isinstance(shopping_list.get("recipeReferences"), list):
+        out["recipeReferences"] = [
+            {
+                "recipeId": ref.get("recipeId"),
+                "name": (ref.get("recipe") or {}).get("name"),
+                "slug": (ref.get("recipe") or {}).get("slug"),
+                "recipeQuantity": ref.get("recipeQuantity"),
+            }
+            for ref in shopping_list["recipeReferences"]
+        ]
+    if isinstance(shopping_list.get("listItems"), list):
+        out["listItems"] = [trim_shopping_item(i) for i in shopping_list["listItems"]]
+    return out

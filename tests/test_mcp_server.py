@@ -161,7 +161,7 @@ async def run(session: ClientSession) -> None:
     try:
         r = await session.call_tool("get_recipes", {"per_page": 5})
         data = r.content[0].text if r.content else "{}"
-        check("get_recipes", "items" in data or "slug" in data)
+        check("get_recipes", "items" in data or "slug" in data, data[:200])
     except Exception as e:
         check("get_recipes", False, str(e))
 
@@ -840,6 +840,33 @@ async def run(session: ClientSession) -> None:
             except Exception as e:
                 check("get_shopping_list recipeReferences trimmed to recipeId/name/slug/recipeQuantity",
                       False, str(e))
+
+            # The list's items and section order are trimmed too (the recipe's
+            # ingredients are on the list now, with real foods, units and labels)
+            try:
+                out = _json.loads((await session.call_tool("get_shopping_list", {"list_id": lid})).content[0].text)
+                raw = _mealie.get_shopping_list(lid)
+                item_keys = {"id", "display", "checked", "quantity", "unit", "food", "label", "note",
+                             "referencedRecipe", "recipeIds"}
+                items = out.get("listItems", [])
+                bad = [i for i in items if set(i) - item_keys
+                       or any(isinstance(i.get(k), dict) for k in ("unit", "food", "label"))]
+                check("get_shopping_list items trimmed (names, no nested objects)",
+                      len(items) == len(raw["listItems"]) and not bad, str(bad[:1]))
+                check("get_shopping_list items keep the recipes they came from",
+                      [i.get("recipeIds", []) for i in items]
+                      == [[ref["recipeId"] for ref in i.get("recipeReferences") or []] for i in raw["listItems"]],
+                      str(items[:2]))
+                check("get_shopping_list labelOrder matches the list's section order",
+                      out.get("labelOrder") == label_order(raw) and "labelSettings" not in out)
+                check("get_shopping_list has no recipeCount or internal ids",
+                      not any(k in _json.dumps(out) for k in ("recipeCount", "groupId", "householdId")))
+                listing = _json.loads((await session.call_tool("get_shopping_list_items", {})).content[0].text)
+                check("get_shopping_list_items items trimmed, with their list id",
+                      bool(listing.get("items")) and all(set(i) - item_keys <= {"shoppingListId"}
+                                                         and i.get("shoppingListId") for i in listing["items"]))
+            except Exception as e:
+                check("get_shopping_list items trimmed (names, no nested objects)", False, repr(e))
 
         try:
             r = await session.call_tool("delete_shopping_list_items_bulk", {

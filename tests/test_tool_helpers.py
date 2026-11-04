@@ -6,7 +6,7 @@ No live infrastructure — exercises logic against stand-in objects:
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
 - recipe read tools trimming Mealie's nested copies (get_recipes, concise, detailed)
-- shopping list tools trimming recipeReferences
+- shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
   partial-failure report
@@ -132,13 +132,52 @@ class FakeRecipes:
         return {"recipeId": "1", "lastMade": "2026-11-01T18:00:00Z"}
 
 
+MEATS = {"name": "Meats", "color": "#6D4C41", "groupId": "g", "id": "lab-2"}
+POUND = {**CUP, "id": "unit-2", "name": "pound", "pluralName": "pounds", "abbreviation": "lb"}
+BEEF = {**TOMATO, "id": "food-2", "name": "ground beef", "labelId": "lab-2", "label": MEATS}
+
+
+def mealie_item(item_id, **fields):
+    """A shopping list item as Mealie returns it (nested objects, internal ids)."""
+    return {"quantity": 1.0, "unit": None, "food": None, "referencedRecipe": None, "note": "",
+            "display": "", "shoppingListId": "L1", "checked": False, "position": 0, "foodId": None,
+            "labelId": None, "unitId": None, "extras": {}, "id": item_id, "groupId": "g",
+            "householdId": "h", "label": None, "recipeReferences": [],
+            "createdAt": "2026-11-01", "updatedAt": "2026-11-01", **fields}
+
+
+BEEF_ITEM = mealie_item(
+    "I1", quantity=1.0, unit=POUND, food=BEEF, display="1 pound ground beef", foodId="food-2",
+    labelId="lab-2", unitId="unit-2", label=MEATS,
+    recipeReferences=[{"recipeId": "R1", "recipeQuantity": 1.0, "recipeScale": 1.0, "recipeNote": None,
+                       "id": "rr1", "shoppingListItemId": "I1"}])
+NOTE_ITEM = mealie_item("I2", note="paper towels", display="1 paper towels", checked=True, position=1)
+
+# A shopping list as Mealie returns it: label settings stored out of position order,
+# full recipe summaries in recipeReferences, nested objects in every item
 FULL_LIST = {
-    "id": "L1", "name": "Groceries", "listItems": [], "labelSettings": [],
+    "id": "L1", "name": "Groceries", "extras": {}, "groupId": "g", "userId": "u", "householdId": "h",
+    "createdAt": "2026-11-01", "updatedAt": "2026-11-01",
+    "listItems": [BEEF_ITEM, NOTE_ITEM],
+    "labelSettings": [
+        {"id": "S1", "shoppingListId": "L1", "labelId": "lab-2", "position": 1, "label": MEATS},
+        {"id": "S0", "shoppingListId": "L1", "labelId": "lab-1", "position": 0, "label": LABEL},
+    ],
     "recipeReferences": [{
         "id": "ref1", "shoppingListId": "L1", "recipeId": "R1", "recipeQuantity": 2.0,
         "recipe": {"id": "R1", "name": "Chili Sauce", "slug": "chili-sauce",
                    "description": "long text", "tags": [{"name": "t", "recipeCount": 0}]},
     }],
+}
+TRIMMED_ITEMS = [
+    {"id": "I1", "display": "1 pound ground beef", "checked": False, "quantity": 1.0, "unit": "pound",
+     "food": "ground beef", "label": "Meats", "recipeIds": ["R1"]},
+    {"id": "I2", "display": "1 paper towels", "checked": True, "quantity": 1.0, "note": "paper towels"},
+]
+TRIMMED_LIST = {
+    "id": "L1", "name": "Groceries", "labelOrder": ["Fruits", "Meats"],
+    "recipeReferences": [{"recipeId": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "recipeQuantity": 2.0}],
+    "listItems": TRIMMED_ITEMS,
 }
 
 
@@ -149,7 +188,14 @@ class FakeShopping:
         self.sent = []
 
     def get_shopping_lists(self, page=None, per_page=None):
-        return {"page": 1, "total": 1, "items": [FULL_LIST]}
+        summary = {k: v for k, v in FULL_LIST.items() if k != "listItems"}
+        return {"page": 1, "total": 1, "items": [summary]}
+
+    def get_shopping_list_items(self, page=None, per_page=None, search=None):
+        return {"page": 1, "per_page": 50, "total": 2, "items": [BEEF_ITEM, NOTE_ITEM]}
+
+    def get_shopping_list_item(self, item_id):
+        return BEEF_ITEM
 
     def get_shopping_list(self, list_id):
         return FULL_LIST
@@ -354,9 +400,8 @@ def run() -> None:
           and raw == json.dumps(MEALIE_RECIPE))
 
     # ------------------------------------------------------------------
-    section("Shopping list tools trim recipeReferences")
+    section("Shopping list tools trim lists and items")
     # ------------------------------------------------------------------
-    trimmed = [{"recipeId": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "recipeQuantity": 2.0}]
     fake = FakeShopping()
     srv = FastMCP("probe")
     register_shopping_list_tools(srv, fake)
@@ -370,11 +415,23 @@ def run() -> None:
         ("add_recipes_to_shopping_list_bulk", {"list_id": "L1", "recipes": [{"recipeId": "R1"}]}),
     ]:
         out = call(srv, tool, args)
-        check(f"{tool}: recipeReferences trimmed", out.get("recipeReferences") == trimmed,
-              str(out.get("recipeReferences"))[:120])
+        check(f"{tool}: whole list trimmed (labelOrder, recipeReferences, items)", out == TRIMMED_LIST,
+              json.dumps(out)[:200])
     out = call(srv, "get_shopping_lists", {})
-    check("get_shopping_lists: every list's recipeReferences trimmed",
-          [i.get("recipeReferences") for i in out.get("items", [])] == [trimmed], str(out)[:120])
+    check("get_shopping_lists: each list trimmed, no items (Mealie's summaries have none)",
+          out.get("items") == [{k: v for k, v in TRIMMED_LIST.items() if k != "listItems"}]
+          and out.get("page") == 1, json.dumps(out)[:200])
+    out = call(srv, "get_shopping_list_items", {})
+    check("get_shopping_list_items: items trimmed, with their list id, pagination kept",
+          out.get("items") == [{**TRIMMED_ITEMS[0], "shoppingListId": "L1"}, {**TRIMMED_ITEMS[1], "shoppingListId": "L1"}]
+          and out.get("total") == 2, json.dumps(out)[:200])
+    out = call(srv, "get_shopping_list_item", {"item_id": "I1"})
+    check("get_shopping_list_item: item trimmed, with its list id",
+          out == {**TRIMMED_ITEMS[0], "shoppingListId": "L1"}, json.dumps(out))
+    check("no recipeCount, groupId or nested objects left in the shopping list tools",
+          not any(k in json.dumps([call(srv, "get_shopping_list", {"list_id": "L1"}),
+                                   call(srv, "get_shopping_list_items", {})])
+                  for k in ("recipeCount", "groupId", "#6D4C41", "pluralName")))
     check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
           fake.sent == [{"name": "Groceries"}], str(fake.sent))
     check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
