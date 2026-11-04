@@ -176,10 +176,10 @@ def run(mealie: MealieFetcher) -> None:
             check("create_recipe_share_token", False, str(e))
 
         try:
-            r = mealie.get_recipe_exports(slug)
-            check("get_recipe_exports", isinstance(r, (dict, list)))
+            r = mealie.get_group_self()
+            check("get_group_self (slug for web links)", bool(r.get("slug")), str(r.get("slug")))
         except Exception as e:
-            check("get_recipe_exports", False, str(e))
+            check("get_group_self (slug for web links)", False, str(e))
 
     # -----------------------------------------------------------------------
     section("Categories")

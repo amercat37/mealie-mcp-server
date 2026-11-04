@@ -281,24 +281,12 @@ Lists existing public share links for a recipe.
 
 ### create_recipe_share_token — POST /api/recipes/{slug}/share
 
-Creates a new public share link for a recipe. Share it with anyone — they don't need a Mealie account.
+Creates a new public share link for a recipe. Share it with anyone — they don't need a Mealie account. The link expires after 30 days (Mealie's default). Needs `MEALIE_PUBLIC_URL` set on the server; without it the reply says no link can be built.
 
 ```
 "Create a share link for the lasagna recipe"
 "Generate a shareable link for chicken soup so I can text it to my mom"
 "Share the beef stew recipe"
-```
-
----
-
-### get_recipe_exports — GET /api/recipes/{slug}/exports
-
-Returns available export formats and download links for a recipe, including a PDF link.
-
-```
-"Get the PDF link for the lasagna recipe"
-"Show me export options for chicken parmesan"
-"Get a downloadable link for the beef stew recipe"
 ```
 
 ---
@@ -873,8 +861,9 @@ Lists all shopping list labels used to categorize and sort items by store sectio
 
 ```
 1. "Create a share link for the lasagna recipe"  → create_recipe_share_token
-2. "Get the PDF download link too"               → get_recipe_exports
-   → text both links to mom
+   → text the link to mom (she can open it without a Mealie account)
+2. "Give me a link I can print it from"          → get_recipe_detailed (its url)
+   → open it in Mealie and print, or save as PDF
 ```
 
 ---

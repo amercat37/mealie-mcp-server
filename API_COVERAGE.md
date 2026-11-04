@@ -7,7 +7,7 @@ This document compares the MCP server implementation against the official Mealie
 | Category | Total Endpoints | Implemented Tools | Coverage |
 |----------|----------------|-------------|----------|
 | Recipe Operations | 14 | 6 | 43% |
-| Recipe Advanced Features | 8 | 6 | 75% |
+| Recipe Advanced Features | 8 | 5 | 63% |
 | Shopping Lists | 17 | 17 | 100% |
 | Categories | 6 | 4 | 67% |
 | Tags | 6 | 4 | 67% |
@@ -16,7 +16,7 @@ This document compares the MCP server implementation against the official Mealie
 | Household Management | 8 | 1 | 13% |
 | Organizer Extras | 6 | 3 | 50% |
 | Admin & User Management | 8 | 0 | 0% |
-| **Total** | **87** | **51** | **59%** |
+| **Total** | **87** | **50** | **57%** |
 
 ## Detailed Coverage
 
@@ -129,7 +129,7 @@ This document compares the MCP server implementation against the official Mealie
 - ✅ `GET /api/recipes/timeline/events` - View a chronological activity feed across all recipes
 - ✅ `GET /api/shared/recipes` - List public share links for a recipe (filtered by recipe ID)
 - ✅ `POST /api/shared/recipes` - Create a public share link for a recipe
-- ✅ `GET /api/recipes/exports` - List available export formats and construct download URLs per recipe
+- ✅ `GET /api/groups/self` - The group's slug, to build share links and recipe page links (with `MEALIE_PUBLIC_URL`)
 
 **Not Implemented:**
 - 🚫 `GET /api/households/recipe-parser` - Fetch the household's recipe scraper/parser configuration

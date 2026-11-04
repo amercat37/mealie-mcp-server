@@ -18,8 +18,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Me
 - **Metadata Tracking**: Mark recipes as made, track last made dates
 - **Comments**: Read and write cooking notes per recipe
 - **Timeline**: View chronological cooking activity across all recipes
-- **Sharing**: Create and list public share links for any recipe
-- **Exports**: Get PDF and other export download links
+- **Sharing**: Create and list public share links for any recipe — links anyone can open without a login (needs `MEALIE_PUBLIC_URL`)
+- **Recipe links**: `get_recipe_detailed` includes the recipe's page in Mealie (open, edit, print or save as PDF) when `MEALIE_PUBLIC_URL` is set
 
 ### 🛒 Shopping Lists
 - **List Management**: Create, rename, and delete shopping lists

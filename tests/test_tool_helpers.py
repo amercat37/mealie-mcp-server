@@ -6,6 +6,7 @@ No live infrastructure — exercises logic against stand-in objects:
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
 - recipe read tools trimming Mealie's nested copies (get_recipes, concise, detailed)
+- share links and the recipe page link, with and without MEALIE_PUBLIC_URL
 - tag/category lookups by id returning the recipes, like the by-slug lookups; empty tag/category lists
 - shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
@@ -135,6 +136,19 @@ class FakeRecipes:
                                 "assets", "notes", "extras", "comments")}
         return {"page": 1, "per_page": 50, "total": 1, "total_pages": 1, "next": None,
                 "previous": None, "items": [json.loads(json.dumps(summary))]}
+
+    group_lookups = 0
+
+    def get_group_self(self):
+        FakeRecipes.group_lookups += 1
+        return {"id": "g", "name": "Home", "slug": "family"}
+
+    def create_recipe_share_token(self, slug):
+        return {"recipeId": "1", "expiresAt": "2099-12-04T00:00:00Z", "groupId": "g", "id": "tok-1",
+                "createdAt": "2099-11-04T00:00:00Z"}
+
+    def get_recipe_share_tokens(self, slug):
+        return [self.create_recipe_share_token(slug)]
 
     def get_household_recipe(self, slug):
         if self.last_made_error:
@@ -537,6 +551,40 @@ def run() -> None:
     check("trimming leaves Mealie's data untouched",
           json.dumps(FakeRecipes(False).get_recipe("chili")) == json.dumps({**MEALIE_RECIPE, "slug": "chili"})
           and raw == json.dumps(MEALIE_RECIPE))
+
+    # ------------------------------------------------------------------
+    section("Links into Mealie: share links and the recipe page (MEALIE_PUBLIC_URL)")
+    # ------------------------------------------------------------------
+    saved = os.environ.pop("MEALIE_PUBLIC_URL", None)
+    try:
+        os.environ["MEALIE_PUBLIC_URL"] = "https://mealie.example.com/"
+        FakeRecipes.group_lookups = 0
+        srv = FastMCP("probe")
+        register_recipe_tools(srv, FakeRecipes(last_made_error=False))
+        link = {"id": "tok-1", "recipeName": "Chili Sauce", "recipeSlug": "chili", "expiresAt": "2099-12-04T00:00:00Z",
+                "url": "https://mealie.example.com/g/family/shared/r/tok-1"}
+        out = call(srv, "create_recipe_share_token", {"slug": "chili"})
+        check("create_recipe_share_token: the link to send (public address + group slug + token)",
+              out == link, json.dumps(out))
+        r = asyncio.run(srv.call_tool("get_recipe_share_tokens", {"slug": "chili"}))
+        listed = [json.loads(b.text) for b in (r[0] if isinstance(r, tuple) else r)]
+        check("get_recipe_share_tokens: each link with its url", listed == [link], json.dumps(listed))
+        d = call(srv, "get_recipe_detailed", {"slug": "chili"})
+        check("get_recipe_detailed: url to the recipe's page (trailing slash on the setting ignored)",
+              d.get("url") == "https://mealie.example.com/g/family/r/chili", str(d.get("url")))
+        check("the group slug is looked up once", FakeRecipes.group_lookups == 1, str(FakeRecipes.group_lookups))
+        del os.environ["MEALIE_PUBLIC_URL"]
+        out = call(srv, "create_recipe_share_token", {"slug": "chili"})
+        check("without MEALIE_PUBLIC_URL: no url, and a note saying why",
+              "url" not in out and "MEALIE_PUBLIC_URL" in out.get("urlNote", ""), json.dumps(out))
+        check("without MEALIE_PUBLIC_URL: no recipe page url",
+              "url" not in call(srv, "get_recipe_detailed", {"slug": "chili"}))
+        check("get_recipe_exports is gone (it returned internal links nobody could open)",
+              "get_recipe_exports" not in {t.name for t in asyncio.run(srv.list_tools())})
+    finally:
+        os.environ.pop("MEALIE_PUBLIC_URL", None)
+        if saved is not None:
+            os.environ["MEALIE_PUBLIC_URL"] = saved
 
     # ------------------------------------------------------------------
     section("Shopping list tools trim lists and items")

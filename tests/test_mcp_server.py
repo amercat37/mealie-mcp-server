@@ -85,7 +85,6 @@ EXPECTED_TOOLS = {
     "get_recipe_comments", "create_recipe_comment",
     "get_recipe_timeline",
     "get_recipe_share_tokens", "create_recipe_share_token",
-    "get_recipe_exports",
     # Categories
     "get_categories", "get_category", "get_category_by_slug", "get_empty_categories",
     # Tags
@@ -147,7 +146,7 @@ async def run(session: ClientSession) -> None:
     tools_response = await session.list_tools()
     registered = {t.name for t in tools_response.tools}
 
-    check("tool count >= 51", len(registered) >= 51, f"got {len(registered)}")
+    check("tool count >= 50", len(registered) >= 50, f"got {len(registered)}")
 
     missing = EXPECTED_TOOLS - registered
     extra = registered - EXPECTED_TOOLS
@@ -496,14 +495,31 @@ async def run(session: ClientSession) -> None:
     try:
         r = await session.call_tool("create_recipe_share_token", {"slug": slug})
         check_tool("create_recipe_share_token", r)
+        # The link is built from MEALIE_PUBLIC_URL and the group slug, and must open
+        # without a login: Mealie's shared page reads /api/recipes/shared/{token}
+        public = os.getenv("MEALIE_PUBLIC_URL", "").strip().rstrip("/")
+        token = _json.loads(r.content[0].text) if not r.isError else {}
+        group_slug = _mealie.get_group_self()["slug"]
+        if public:
+            check("create_recipe_share_token returns the share link",
+                  token.get("url") == f"{public}/g/{group_slug}/shared/r/{token.get('id')}"
+                  and token.get("recipeSlug") == slug and token.get("expiresAt"), str(token))
+            import httpx as _httpx
+            opened = _httpx.get(f"{public}/api/recipes/shared/{token.get('id')}", timeout=30)
+            check("the share link opens without a login",
+                  opened.status_code == 200 and opened.json().get("slug") == slug, f"HTTP {opened.status_code}")
+            listed = _json.loads((await session.call_tool("get_recipe_share_tokens", {"slug": slug})).content[0].text)
+            listed = listed if isinstance(listed, list) else [listed]
+            check("get_recipe_share_tokens lists it with its link",
+                  any(t.get("id") == token.get("id") and t.get("url") == token.get("url") for t in listed), str(listed)[:200])
+            d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": slug})).content[0].text)
+            check("get_recipe_detailed links to the recipe's page",
+                  d.get("url") == f"{public}/g/{group_slug}/r/{slug}", str(d.get("url")))
+        else:
+            check("without MEALIE_PUBLIC_URL the share reply says why there's no link",
+                  "url" not in token and "MEALIE_PUBLIC_URL" in token.get("urlNote", ""), str(token))
     except Exception as e:
-        check("create_recipe_share_token", False, str(e))
-
-    try:
-        r = await session.call_tool("get_recipe_exports", {"slug": slug})
-        check_tool("get_recipe_exports", r)
-    except Exception as e:
-        check("get_recipe_exports", False, str(e))
+        check("create_recipe_share_token", False, repr(e))
 
     # -----------------------------------------------------------------------
     section("Categories")

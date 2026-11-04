@@ -1,4 +1,5 @@
 import logging
+import os
 import traceback
 import uuid
 from typing import Any, Dict, List, Optional
@@ -14,8 +15,38 @@ from trim import trim_recipe_concise, trim_recipe_detail, trim_recipe_summary
 logger = logging.getLogger("mealie-mcp")
 
 
+NO_PUBLIC_URL = (
+    "No link: MEALIE_PUBLIC_URL (the address people open Mealie at) isn't set on the "
+    "MCP server"
+)
+
+
 def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     """Register all recipe-related tools with the MCP server."""
+
+    group: Dict[str, str] = {}
+
+    def web_link(path: str) -> Optional[str]:
+        """A link into Mealie's web app, e.g. web_link("r/<slug>"), or None when
+        MEALIE_PUBLIC_URL isn't set: MEALIE_BASE_URL is usually an internal Docker
+        address no one can open, and Mealie's API doesn't say its public address."""
+        public_url = os.getenv("MEALIE_PUBLIC_URL", "").strip().rstrip("/")
+        if not public_url:
+            return None
+        if "slug" not in group:
+            group["slug"] = mealie.get_group_self()["slug"]
+        return f"{public_url}/g/{group['slug']}/{path}"
+
+    def share_link(token: Dict[str, Any], recipe: Dict[str, Any]) -> Dict[str, Any]:
+        """A share token as the link to send: id, recipeName, recipeSlug, expiresAt, url."""
+        out = {"id": token.get("id"), "recipeName": recipe.get("name"), "recipeSlug": recipe.get("slug"),
+               "expiresAt": token.get("expiresAt")}
+        url = web_link(f"shared/r/{token.get('id')}")
+        if url:
+            out["url"] = url
+        else:
+            out["urlNote"] = NO_PUBLIC_URL
+        return out
 
     def add_last_made(slug: str, recipe: Dict[str, Any]) -> Dict[str, Any]:
         """Set recipe["lastMade"] from the household's recipe data, where Mealie v3.29+
@@ -114,12 +145,18 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 display (the full line as text) and referenceId (instruction steps link to
                 ingredients by it). prepTime/performTime/totalTime are readable text; the
                 *TimeSeconds fields hold the same times as numbers. lastMade is the
-                household's last made date (null if never made).
+                household's last made date (null if never made). url is the recipe's
+                page in Mealie (to open, edit, or print / save as PDF) — only for
+                someone logged in to Mealie; use create_recipe_share_token to share it.
         """
         try:
             logger.info({"message": "Fetching recipe", "slug": slug})
             recipe_json = add_readable_times(mealie.get_recipe(slug))
-            return trim_recipe_detail(add_last_made(slug, recipe_json))
+            recipe = trim_recipe_detail(add_last_made(slug, recipe_json))
+            url = web_link(f"r/{recipe.get('slug', slug)}")
+            if url:
+                recipe["url"] = url
+            return recipe
         except Exception as e:
             error_msg = f"Error fetching recipe with slug '{slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -227,11 +264,13 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             slug: The unique text identifier for the recipe
 
         Returns:
-            List[Dict[str, Any]]: List of share tokens with URLs and expiry info
+            List[Dict[str, Any]]: Each link's id, recipeName, recipeSlug, expiresAt and
+                url (anyone with it can view the recipe, no login, until it expires)
         """
         try:
             logger.info({"message": "Fetching recipe share tokens", "slug": slug})
-            return mealie.get_recipe_share_tokens(slug)
+            recipe = mealie.get_recipe(slug)
+            return [share_link(t, recipe) for t in mealie.get_recipe_share_tokens(slug)]
         except Exception as e:
             error_msg = f"Error fetching share tokens for recipe '{slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -247,33 +286,16 @@ def register_recipe_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             slug: The unique text identifier for the recipe
 
         Returns:
-            Dict[str, Any]: The new share token including the shareable URL
+            Dict[str, Any]: The new link's id, recipeName, recipeSlug, expiresAt (Mealie's
+                default: 30 days) and url — anyone with the url can view the recipe,
+                no login, until it expires
         """
         try:
             logger.info({"message": "Creating recipe share token", "slug": slug})
-            return mealie.create_recipe_share_token(slug)
+            recipe = mealie.get_recipe(slug)
+            return share_link(mealie.create_recipe_share_token(slug), recipe)
         except Exception as e:
             error_msg = f"Error creating share token for recipe '{slug}': {str(e)}"
-            logger.error({"message": error_msg})
-            logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
-            raise ToolError(error_msg)
-
-    @mcp.tool()
-    def get_recipe_exports(slug: str) -> Dict[str, Any]:
-        """Get available export formats and download links for a recipe,
-        including a PDF download link.
-
-        Args:
-            slug: The unique text identifier for the recipe
-
-        Returns:
-            Dict[str, Any]: Available export formats and their download URLs
-        """
-        try:
-            logger.info({"message": "Fetching recipe exports", "slug": slug})
-            return mealie.get_recipe_exports(slug)
-        except Exception as e:
-            error_msg = f"Error fetching exports for recipe '{slug}': {str(e)}"
             logger.error({"message": error_msg})
             logger.debug({"message": "Error traceback", "traceback": traceback.format_exc()})
             raise ToolError(error_msg)

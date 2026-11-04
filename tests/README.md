@@ -75,7 +75,7 @@ python tests/test_mcp_server.py
 ```
 
 **What it tests:**
-- All 51 tools are registered (`session.list_tools()`)
+- All 50 tools are registered (`session.list_tools()`)
 - Every tool can be called and succeeds (`isError` is false; failures print the error text)
 - Full create → read → update cycle via MCP tool calls, including Mealie v3.30 structured
   recipe times, household `lastMade` and whole-week meal plan entries
