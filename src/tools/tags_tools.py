@@ -86,11 +86,11 @@ def register_tags_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         up stale or unused tag entries.
 
         Returns:
-            List[Dict[str, Any]]: Tags with no associated recipes
+            List[Dict[str, Any]]: Tags with no recipes: id, name and slug
         """
         try:
             logger.info({"message": "Fetching empty tags"})
-            return mealie.get_empty_tags()
+            return [trim_organizer(o) for o in mealie.get_empty_tags()]
         except Exception as e:
             error_msg = f"Error fetching empty tags: {str(e)}"
             logger.error({"message": error_msg})

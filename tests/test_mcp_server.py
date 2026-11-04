@@ -574,6 +574,9 @@ async def run(session: ClientSession) -> None:
         r = await session.call_tool("get_empty_tags", {})
         check_tool("get_empty_tags", r)
         check("get_empty_tags returns list", not r.isError, r.content[0].text[:60] if r.isError and r.content else "")
+        empty = [_json.loads(c.text) for c in r.content] if not r.isError else []
+        check("get_empty_tags entries are id, name, slug",
+              all(set(t) == {"id", "name", "slug"} for t in empty), str(empty[:2]))
     except Exception as e:
         check("get_empty_tags", False, str(e))
         check("get_empty_tags returns list", False, str(e))

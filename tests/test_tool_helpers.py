@@ -6,7 +6,7 @@ No live infrastructure — exercises logic against stand-in objects:
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
 - recipe read tools trimming Mealie's nested copies (get_recipes, concise, detailed)
-- tag/category lookups by id returning the recipes, like the by-slug lookups
+- tag/category lookups by id returning the recipes, like the by-slug lookups; empty tag/category lists
 - shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
 - item adds and edits reporting created / updated / deleted (Mealie merges lines)
@@ -342,6 +342,14 @@ class FakeOrganizers:
     def get_tag_by_slug(self, slug):
         tag = next(t for t in self.TAGS.values() if t["slug"] == slug)
         return {**tag, "recipes": self.RECIPES if slug == "spicy" else []}
+
+    def get_empty_tags(self):
+        # Mealie's empty-tags list uses snake_case, with a misspelled update_at
+        return [{"id": "T2", "group_id": "g", "recipe_count": 0, "slug": "unused", "update_at": "2026-04-14",
+                 "name": "Unused", "created_at": "2026-04-14"}]
+
+    def get_empty_categories(self):
+        return [{"name": "Salad", "id": "C2", "groupId": "g", "slug": "salad"}]
 
     def get_category(self, category_id):
         cat = self.CATS[category_id]
@@ -714,6 +722,14 @@ def run() -> None:
           json.dumps(call(srv, "get_category", {"category_id": "C1"})))
     check("get_category_by_slug returns the same",
           call(srv, "get_category_by_slug", {"category_slug": "sauce"}) == sauce)
+    r = asyncio.run(srv.call_tool("get_empty_tags", {}))
+    empty_tags = [json.loads(b.text) for b in (r[0] if isinstance(r, tuple) else r)]
+    check("get_empty_tags: id, name, slug (Mealie's snake_case fields dropped)",
+          empty_tags == [{"id": "T2", "name": "Unused", "slug": "unused"}], json.dumps(empty_tags))
+    r = asyncio.run(srv.call_tool("get_empty_categories", {}))
+    empty_cats = [json.loads(b.text) for b in (r[0] if isinstance(r, tuple) else r)]
+    check("get_empty_categories: id, name, slug",
+          empty_cats == [{"id": "C2", "name": "Salad", "slug": "salad"}], json.dumps(empty_cats))
     err = call_error(srv, "get_tag", {"tag_id": "nope"})
     check("unknown tag id is an error", "nope" in err and "404" in err, err[-100:])
 

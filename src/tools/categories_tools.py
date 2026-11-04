@@ -86,11 +86,11 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         clean up stale or unused category entries.
 
         Returns:
-            List[Dict[str, Any]]: Categories with no associated recipes
+            List[Dict[str, Any]]: Categories with no recipes: id, name and slug
         """
         try:
             logger.info({"message": "Fetching empty categories"})
-            return mealie.get_empty_categories()
+            return [trim_organizer(o) for o in mealie.get_empty_categories()]
         except Exception as e:
             error_msg = f"Error fetching empty categories: {str(e)}"
             logger.error({"message": error_msg})
