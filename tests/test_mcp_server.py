@@ -85,7 +85,6 @@ EXPECTED_TOOLS = {
     "get_recipe_comments", "create_recipe_comment",
     "get_recipe_timeline",
     "get_recipe_share_tokens", "create_recipe_share_token",
-    "get_recipe_exports",
     # Categories
     "get_categories", "get_category", "get_category_by_slug", "get_empty_categories",
     # Tags
@@ -147,7 +146,7 @@ async def run(session: ClientSession) -> None:
     tools_response = await session.list_tools()
     registered = {t.name for t in tools_response.tools}
 
-    check("tool count >= 51", len(registered) >= 51, f"got {len(registered)}")
+    check("tool count >= 50", len(registered) >= 50, f"got {len(registered)}")
 
     missing = EXPECTED_TOOLS - registered
     extra = registered - EXPECTED_TOOLS
@@ -161,7 +160,7 @@ async def run(session: ClientSession) -> None:
     try:
         r = await session.call_tool("get_recipes", {"per_page": 5})
         data = r.content[0].text if r.content else "{}"
-        check("get_recipes", "items" in data or "slug" in data)
+        check("get_recipes", "items" in data or "slug" in data, data[:200])
     except Exception as e:
         check("get_recipes", False, str(e))
 
@@ -208,6 +207,12 @@ async def run(session: ClientSession) -> None:
         check("create_recipe", "test" in text.lower() or len(text) > 10, text[:80])
         if "test-recipe" in text:
             state["recipe_slug"] = "test-recipe"
+        if not r.isError:
+            created = _json.loads(text)
+            d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": created["slug"]})).content[0].text)
+            check("create_recipe returns the recipe exactly as get_recipe_detailed does",
+                  created == d, str({k: (created.get(k), d.get(k)) for k in set(created) | set(d)
+                                    if created.get(k) != d.get(k)})[:200])
     except Exception as e:
         check("create_recipe", False, str(e))
 
@@ -383,6 +388,38 @@ async def run(session: ClientSession) -> None:
     except Exception as e:
         check("recipe time round-trip", False, str(e))
 
+    # The read tools trim Mealie's nested copies: organizers as slugs, ingredient
+    # food/unit/label as names, no internal ids (checked on real recipes)
+    try:
+        r = await session.call_tool("get_recipes", {"per_page": 50})
+        items = _json.loads(r.content[0].text).get("items", [])
+        allowed = {"id", "name", "slug", "description", "tags", "recipeCategory", "tools",
+                   "prepTime", "prepTimeSeconds", "performTime", "performTimeSeconds", "totalTime",
+                   "totalTimeSeconds", "recipeServings", "recipeYieldQuantity", "recipeYield", "rating",
+                   "dateAdded", "dateUpdated"}
+        extra = sorted({k for i in items for k in i} - allowed)
+        check("get_recipes returns only the short card fields", bool(items) and not extra, f"extra={extra}")
+        check("get_recipes organizers are slugs",
+              all(isinstance(s, str) for i in items for k in ("tags", "recipeCategory", "tools") for s in i[k]))
+        with_ingredients = next((i["slug"] for i in items
+                                 if _mealie.get_recipe(i["slug"]).get("recipeIngredient")), None)
+        d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": with_ingredients})).content[0].text)
+        c = _json.loads((await session.call_tool("get_recipe_concise", {"slug": with_ingredients})).content[0].text)
+        ingredient_keys = {"title", "quantity", "note", "display", "referenceId", "unit", "food", "label",
+                           "referencedRecipe", "substitutions"}
+        bad = [i for i in d["recipeIngredient"] + c["recipeIngredient"]
+               if set(i) - ingredient_keys or any(isinstance(i.get(k), dict) for k in ("unit", "food", "label"))]
+        check("detailed/concise ingredients are trimmed (names, no nested objects)",
+              bool(d["recipeIngredient"]) and not bad, str(bad[:1]))
+        check("detailed and concise agree on the ingredients", d["recipeIngredient"] == c["recipeIngredient"])
+        check("detailed drops internal fields, keeps the recipe",
+              not {"userId", "groupId", "householdId", "createdAt", "updatedAt", "settings", "comments"} & set(d)
+              and {"id", "name", "slug", "recipeInstructions", "nutrition", "lastMade"} <= set(d), sorted(d))
+        sizes = {t: len(_json.dumps(x)) for t, x in (("list", items), ("detailed", d), ("concise", c))}
+        check("no recipeCount left in the recipe tools", "recipeCount" not in _json.dumps([items, d, c]), str(sizes))
+    except Exception as e:
+        check("recipe read tools trim output", False, repr(e))
+
     # A unit-less time is rejected before anything is created
     try:
         r = await session.call_tool("create_recipe", {
@@ -418,12 +455,21 @@ async def run(session: ClientSession) -> None:
             check("duplicate_recipe copies seconds and shows readable times",
                   (dup.get("totalTime"), dup.get("totalTimeSeconds")) == ("30 minutes", 1800),
                   str({k: dup.get(k) for k in ("totalTime", "totalTimeSeconds")}))
+            d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": dup["slug"]})).content[0].text)
+            check("duplicate_recipe returns the copy exactly as get_recipe_detailed does",
+                  dup == d and dup["slug"] != slug, str({k: (dup.get(k), d.get(k)) for k in set(dup) | set(d)
+                                                         if dup.get(k) != d.get(k)})[:200])
     except Exception as e:
         check("duplicate_recipe", False, str(e))
 
     try:
         r = await session.call_tool("mark_recipe_last_made", {"slug": slug})
         check_tool("mark_recipe_last_made", r)
+        made = _json.loads(r.content[0].text) if not r.isError else {}
+        from datetime import datetime as _dt, timezone as _tz
+        check("mark_recipe_last_made confirms name, slug and today's lastMade",
+              set(made) == {"name", "slug", "lastMade"} and made["slug"] == slug
+              and str(made.get("lastMade", "")).startswith(_dt.now(_tz.utc).date().isoformat()), str(made))
     except Exception as e:
         check("mark_recipe_last_made", False, str(e))
 
@@ -464,14 +510,31 @@ async def run(session: ClientSession) -> None:
     try:
         r = await session.call_tool("create_recipe_share_token", {"slug": slug})
         check_tool("create_recipe_share_token", r)
+        # The link is built from MEALIE_PUBLIC_URL and the group slug, and must open
+        # without a login: Mealie's shared page reads /api/recipes/shared/{token}
+        public = os.getenv("MEALIE_PUBLIC_URL", "").strip().rstrip("/")
+        token = _json.loads(r.content[0].text) if not r.isError else {}
+        group_slug = _mealie.get_group_self()["slug"]
+        if public:
+            check("create_recipe_share_token returns the share link",
+                  token.get("url") == f"{public}/g/{group_slug}/shared/r/{token.get('id')}"
+                  and token.get("recipeSlug") == slug and token.get("expiresAt"), str(token))
+            import httpx as _httpx
+            opened = _httpx.get(f"{public}/api/recipes/shared/{token.get('id')}", timeout=30)
+            check("the share link opens without a login",
+                  opened.status_code == 200 and opened.json().get("slug") == slug, f"HTTP {opened.status_code}")
+            listed = _json.loads((await session.call_tool("get_recipe_share_tokens", {"slug": slug})).content[0].text)
+            listed = listed if isinstance(listed, list) else [listed]
+            check("get_recipe_share_tokens lists it with its link",
+                  any(t.get("id") == token.get("id") and t.get("url") == token.get("url") for t in listed), str(listed)[:200])
+            d = _json.loads((await session.call_tool("get_recipe_detailed", {"slug": slug})).content[0].text)
+            check("get_recipe_detailed links to the recipe's page",
+                  d.get("url") == f"{public}/g/{group_slug}/r/{slug}", str(d.get("url")))
+        else:
+            check("without MEALIE_PUBLIC_URL the share reply says why there's no link",
+                  "url" not in token and "MEALIE_PUBLIC_URL" in token.get("urlNote", ""), str(token))
     except Exception as e:
-        check("create_recipe_share_token", False, str(e))
-
-    try:
-        r = await session.call_tool("get_recipe_exports", {"slug": slug})
-        check_tool("get_recipe_exports", r)
-    except Exception as e:
-        check("get_recipe_exports", False, str(e))
+        check("create_recipe_share_token", False, repr(e))
 
     # -----------------------------------------------------------------------
     section("Categories")
@@ -542,6 +605,9 @@ async def run(session: ClientSession) -> None:
         r = await session.call_tool("get_empty_tags", {})
         check_tool("get_empty_tags", r)
         check("get_empty_tags returns list", not r.isError, r.content[0].text[:60] if r.isError and r.content else "")
+        empty = [_json.loads(c.text) for c in r.content] if not r.isError else []
+        check("get_empty_tags entries are id, name, slug",
+              all(set(t) == {"id", "name", "slug"} for t in empty), str(empty[:2]))
     except Exception as e:
         check("get_empty_tags", False, str(e))
         check("get_empty_tags returns list", False, str(e))
@@ -581,6 +647,30 @@ async def run(session: ClientSession) -> None:
         except Exception as e:
             check("get_tag_by_slug", False, str(e))
             check("get_tag_by_slug recipes are slugs", False, str(e))
+
+    # By id and by slug must agree, listing as many recipes as Mealie counts (Mealie's
+    # by-id lookups leave the recipes out). A sample — the two busiest and an empty one —
+    # not every tag: a burst of lookups through the public URL looks like a crawler to
+    # CrowdSec and gets this host banned
+    for kind, list_tool, by_id, by_slug, id_arg, slug_arg in (
+        ("tag", "get_tags", "get_tag", "get_tag_by_slug", "tag_id", "tag_slug"),
+        ("category", "get_categories", "get_category", "get_category_by_slug", "category_id", "category_slug"),
+    ):
+        try:
+            everything = _json.loads((await session.call_tool(list_tool, {"per_page": -1})).content[0].text)["items"]
+            busiest = sorted(everything, key=lambda o: -(o.get("recipeCount") or 0))
+            sample = busiest[:2] + [o for o in busiest[2:] if not o.get("recipeCount")][:1]
+            mismatched = []
+            for org in sample:
+                a = _json.loads((await session.call_tool(by_id, {id_arg: org["id"]})).content[0].text)
+                b = _json.loads((await session.call_tool(by_slug, {slug_arg: org["slug"]})).content[0].text)
+                if a != b or set(a) != {"id", "name", "slug", "recipes"} or len(a["recipes"]) != org.get("recipeCount"):
+                    mismatched.append((org["slug"], len(a.get("recipes", [])), len(b.get("recipes", [])), org.get("recipeCount")))
+            check(f"{by_id} and {by_slug} agree, with all the {kind}'s recipes",
+                  bool(sample) and not mismatched,
+                  f"{[(o['slug'], o.get('recipeCount')) for o in sample]}; mismatched={mismatched}")
+        except Exception as e:
+            check(f"{by_id} and {by_slug} agree, with all the {kind}'s recipes", False, repr(e))
 
     # -----------------------------------------------------------------------
     section("Foods")
@@ -756,7 +846,7 @@ async def run(session: ClientSession) -> None:
             food_id = (_mealie.get_foods(per_page=1).get("items") or [{}])[0].get("id")
             item = _mealie.create_shopping_list_item(
                 shopping_list_id=lid, note="__test_bulk_keep__", quantity=3, food_id=food_id
-            )
+            )["createdItems"][0]
             r = await session.call_tool("update_shopping_list_items_bulk", {
                 "items": [{"id": item["id"], "checked": True}]
             })
@@ -809,6 +899,33 @@ async def run(session: ClientSession) -> None:
                 check("get_shopping_list recipeReferences trimmed to recipeId/name/slug/recipeQuantity",
                       False, str(e))
 
+            # The list's items and section order are trimmed too (the recipe's
+            # ingredients are on the list now, with real foods, units and labels)
+            try:
+                out = _json.loads((await session.call_tool("get_shopping_list", {"list_id": lid})).content[0].text)
+                raw = _mealie.get_shopping_list(lid)
+                item_keys = {"id", "display", "checked", "quantity", "unit", "food", "label", "note",
+                             "referencedRecipe", "recipeIds"}
+                items = out.get("listItems", [])
+                bad = [i for i in items if set(i) - item_keys
+                       or any(isinstance(i.get(k), dict) for k in ("unit", "food", "label"))]
+                check("get_shopping_list items trimmed (names, no nested objects)",
+                      len(items) == len(raw["listItems"]) and not bad, str(bad[:1]))
+                check("get_shopping_list items keep the recipes they came from",
+                      [i.get("recipeIds", []) for i in items]
+                      == [[ref["recipeId"] for ref in i.get("recipeReferences") or []] for i in raw["listItems"]],
+                      str(items[:2]))
+                check("get_shopping_list labelOrder matches the list's section order",
+                      out.get("labelOrder") == label_order(raw) and "labelSettings" not in out)
+                check("get_shopping_list has no recipeCount or internal ids",
+                      not any(k in _json.dumps(out) for k in ("recipeCount", "groupId", "householdId")))
+                listing = _json.loads((await session.call_tool("get_shopping_list_items", {})).content[0].text)
+                check("get_shopping_list_items items trimmed, with their list id",
+                      bool(listing.get("items")) and all(set(i) - item_keys <= {"shoppingListId"}
+                                                         and i.get("shoppingListId") for i in listing["items"]))
+            except Exception as e:
+                check("get_shopping_list items trimmed (names, no nested objects)", False, repr(e))
+
         try:
             r = await session.call_tool("delete_shopping_list_items_bulk", {
                 "item_ids": []
@@ -826,6 +943,104 @@ async def run(session: ClientSession) -> None:
             state["shopping_list_id"] = None
         except Exception as e:
             check("delete_shopping_list", False, str(e))
+
+    # -----------------------------------------------------------------------
+    section("Shopping list merges — item tools report created / updated / deleted")
+    # -----------------------------------------------------------------------
+    # Mealie merges a matching item into an existing line instead of adding a
+    # second one; the tools must report what really happened. Every case runs on its
+    # own list (swept by name at the end if anything fails).
+    merge_list = None
+    try:
+        merge_list = _mealie.create_shopping_list("__test_merge_list__")["id"]
+        units = _mealie.get_organizer_units(per_page=200)["items"]
+        u1, u2 = units[0], next(u for u in units[1:] if u["name"] != units[0]["name"])
+        f1 = _mealie.get_foods(per_page=1)["items"][0]
+
+        async def tool(name, args):
+            r = await session.call_tool(name, args)
+            return _json.loads(r.content[0].text) if not r.isError else {"error": error_text(r)}
+
+        add = lambda **kw: tool("create_shopping_list_item", {"shopping_list_id": merge_list, "note": "x", **kw})
+        r1 = await add(quantity=1, unit_id=u1["id"], food_id=f1["id"])
+        a = (r1.get("created") or [{}])[0]
+        check("merge: new food + unit is created", set(r1) == {"created"} and a.get("unit") == u1["name"]
+              and a.get("food") == f1["name"] and a.get("shoppingListId") == merge_list, str(r1)[:200])
+        r2 = await add(quantity=2, unit_id=u1["id"], food_id=f1["id"])
+        check("merge: same food + unit is reported as updated, quantities added",
+              set(r2) == {"updated"} and r2["updated"][0]["id"] == a.get("id") and r2["updated"][0]["quantity"] == 3,
+              str(r2)[:200])
+        r3 = await add(quantity=1, unit_id=u2["id"], food_id=f1["id"])
+        b = (r3.get("created") or [{}])[0]
+        check("merge: same food, different unit is a new line", set(r3) == {"created"} and b.get("id") != a.get("id"),
+              str(r3)[:200])
+        await tool("create_shopping_list_item", {"shopping_list_id": merge_list, "note": "__test_merge_note__"})
+        r4 = await tool("create_shopping_list_item", {"shopping_list_id": merge_list, "note": "__test_merge_note__"})
+        check("merge: the same note text is reported as updated",
+              set(r4) == {"updated"} and r4["updated"][0]["quantity"] == 2, str(r4)[:200])
+        r5 = await tool("update_shopping_list_item", {"item_id": b.get("id"), "checked": True})
+        check("check off: updated, checked", set(r5) == {"updated"} and r5["updated"][0]["checked"] is True, str(r5)[:200])
+        r6 = await add(quantity=1, unit_id=u2["id"], food_id=f1["id"])
+        c = (r6.get("created") or [{}])[0]
+        check("merge: a checked line doesn't absorb a new add (new line)", set(r6) == {"created"}, str(r6)[:200])
+        r7 = await tool("update_shopping_list_item", {"item_id": b.get("id"), "checked": False})
+        kept = (r7.get("updated") or [{}])[0]
+        check("uncheck into a matching line: one updated, the other deleted",
+              set(r7) == {"updated", "deleted"} and {kept.get("id"), *r7["deleted"]} == {b.get("id"), c.get("id")}
+              and kept.get("quantity") == 2, str(r7)[:200])
+        r8 = await tool("create_shopping_list_items_bulk", {"items": [
+            {"shoppingListId": merge_list, "note": "__test_merge_dup__"},
+            {"shoppingListId": merge_list, "note": "__test_merge_dup__"},
+            {"shoppingListId": merge_list, "note": "x", "quantity": 1, "unitId": u1["id"], "foodId": f1["id"]},
+        ]})
+        check("bulk add: in-batch duplicates combine (created), a matching item merges (updated)",
+              [i["quantity"] for i in r8.get("created", [])] == [2]
+              and [(i["id"], i["quantity"]) for i in r8.get("updated", [])] == [(a.get("id"), 4)], str(r8)[:240])
+        r9 = await tool("update_shopping_list_items_bulk", {"items": [{"id": kept.get("id"), "unitId": u1["id"]}]})
+        check("bulk edit: changing a line's unit to match another merges them (no 500)",
+              "error" not in r9 and [i["id"] for i in r9.get("updated", [])] == [a.get("id")]
+              and r9.get("deleted") == [kept.get("id")] and r9["updated"][0]["quantity"] == 6, str(r9)[:240])
+        raw = _mealie.get_shopping_list(merge_list)["listItems"]
+        check("merge list ends with three lines (food+unit, note, combined duplicate)",
+              len(raw) == 3, str([i.get("display") for i in raw]))
+
+        # Deletes check every id first (one read of all items), so an unknown id
+        # deletes nothing — Mealie itself reports success for any id
+        second_list = _mealie.create_shopping_list("__test_merge_list_2__")["id"]
+        other = _mealie.create_shopping_list_item(shopping_list_id=second_list, note="__test_merge_other__")
+        other_id = other["createdItems"][0]["id"]
+        ids = [i["id"] for i in raw]
+        live_ids = lambda: {i["id"] for i in _mealie.get_shopping_list_items(per_page=-1)["items"]}
+        unknown = "00000000-0000-4000-8000-000000000000"
+        r = await tool("delete_shopping_list_items_bulk", {"item_ids": [ids[0], unknown]})
+        check("delete: a real id mixed with an unknown one is an error and deletes NOTHING",
+              "error" in r and unknown in r["error"] and ids[0] in live_ids(), str(r)[:200])
+        r = await tool("delete_shopping_list_item", {"item_id": unknown})
+        check("delete: an unknown id alone is an error", "error" in r and "Nothing was deleted" in r["error"], str(r)[:160])
+        r = await tool("delete_shopping_list_item", {"item_id": ids[0]})
+        check("delete one item: returns it as it was, and it's gone",
+              [i["id"] for i in r.get("deleted", [])] == [ids[0]] and r["deleted"][0].get("display")
+              and ids[0] not in live_ids(), str(r)[:200])
+        r = await tool("delete_shopping_list_items_bulk", {"item_ids": [ids[1], other_id, ids[1]]})
+        check("bulk delete across two lists (an id listed twice): each reported once, all gone",
+              [(i["id"], i["shoppingListId"]) for i in r.get("deleted", [])]
+              == [(ids[1], merge_list), (other_id, second_list)] and not ({ids[1], other_id} & live_ids()),
+              str(r)[:240])
+        r = await tool("delete_shopping_list", {"list_id": second_list})
+        check("delete a list: id, name and item count",
+              r == {"deleted": [{"id": second_list, "name": "__test_merge_list_2__", "itemCount": 0}]}, str(r))
+        r = await tool("delete_shopping_list", {"list_id": merge_list})
+        check("delete a list with an item on it: itemCount 1, and the item goes with it",
+              r.get("deleted", [{}])[0].get("itemCount") == 1 and ids[2] not in live_ids(), str(r))
+        merge_list = None
+    except Exception as e:
+        check("shopping list merges", False, repr(e))
+    finally:
+        if merge_list:
+            try:
+                _mealie.delete_shopping_list(merge_list)
+            except Exception:
+                pass
 
     # -----------------------------------------------------------------------
     section("Meal Plans")
@@ -900,6 +1115,9 @@ async def run(session: ClientSession) -> None:
         try:
             r = await session.call_tool("delete_mealplan", {"entry_id": str(mid)})
             check_tool("delete_mealplan (text entry_id)", r)
+            gone = _json.loads(r.content[0].text).get("deleted", []) if not r.isError else []
+            check("delete_mealplan returns the deleted entry's card",
+                  [(e.get("id"), e.get("title")) for e in gone] == [(int(mid), "__test_mealplan__")], str(gone))
             state["mealplan_id"] = None
         except Exception as e:
             check("delete_mealplan", False, str(e))
@@ -959,6 +1177,29 @@ async def run(session: ClientSession) -> None:
             check_tool("delete_mealplan (week entry, numeric entry_id)", r)
     except Exception as e:
         check("whole-week meal plan entries", False, str(e))
+
+    # Meal plan reads are cards like create/update, keeping the entry's note (text).
+    # The tools can't write a note, so the entry is created through Mealie's API.
+    try:
+        recipe = _mealie.get_recipes(per_page=1)["items"][0]
+        noted = _mealie._handle_request("POST", "/api/households/mealplans", json={
+            "date": "2099-01-28", "entryType": "dinner", "recipeId": recipe["id"],
+            "title": "__test_noted_mealplan__", "text": "__test note: double it__",
+        })
+        r = await session.call_tool("get_all_mealplans", {"start_date": "2099-01-28", "end_date": "2099-01-28"})
+        items = _json.loads(r.content[0].text).get("items", []) if not r.isError else []
+        card = next((e for e in items if e.get("id") == noted["id"]), {})
+        check("get_all_mealplans returns cards: recipe name and slug, the note kept, no embedded recipe",
+              card.get("text") == "__test note: double it__" and card.get("recipeName") == recipe["name"]
+              and card.get("recipeSlug") == recipe["slug"]
+              and not ({"recipe", "groupId", "userId", "householdId", "recipeScale"} & {k for e in items for k in e}),
+              str(items)[:240])
+        r = await session.call_tool("delete_mealplan", {"entry_id": noted["id"]})
+        gone = _json.loads(r.content[0].text).get("deleted", []) if not r.isError else []
+        check("delete_mealplan card includes the note and recipe name",
+              gone == [card], str(gone)[:200])
+    except Exception as e:
+        check("get_all_mealplans returns cards: recipe name and slug, the note kept, no embedded recipe", False, repr(e))
 
     try:
         r = await session.call_tool("create_mealplan_bulk", {

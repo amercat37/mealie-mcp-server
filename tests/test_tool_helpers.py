@@ -5,8 +5,14 @@ No live infrastructure — exercises logic against stand-in objects:
 - whole-week meal plan alignment for every household firstDayOfWeek setting
   (the integration tests can only see the live household's own setting)
 - the recipe read tools when the household lastMade lookup fails
-- shopping list tools trimming recipeReferences
+- recipe read tools trimming Mealie's nested copies (get_recipes, concise, detailed)
+- share links and the recipe page link, with and without MEALIE_PUBLIC_URL
+- tag/category lookups by id returning the recipes, like the by-slug lookups; empty tag/category lists
+- shopping list tools trimming lists and items (labelOrder, recipeReferences, items)
 - reordering a shopping list's sections by label name
+- item adds and edits reporting created / updated / deleted (Mealie merges lines)
+- deletes: item ids checked first (nothing deleted if any is unknown), trimmed replies
+- meal plan reads as cards, keeping the entry's note
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
   partial-failure report
 
@@ -26,9 +32,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mcp.server.fastmcp import FastMCP
 
 from mealie.mealplan import MealplanMixin
+from mealie.shopping_list import merge_item
 from tools.mealplan_tools import register_mealplan_tools
+from tools.categories_tools import register_categories_tools
 from tools.recipe_tools import register_recipe_tools
 from tools.shopping_list_tools import register_shopping_list_tools
+from tools.tags_tools import register_tags_tools
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -54,36 +63,177 @@ class FakeMealplan(MealplanMixin):
         return {"firstDayOfWeek": self.first_day}
 
 
+RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
+
+
+def organizer(name, slug, **extra):
+    return {"id": f"id-{slug}", "groupId": "g", "name": name, "slug": slug, "recipeCount": 0, **extra}
+
+
+LABEL = {"name": "Fruits", "color": "#7CB342", "groupId": "g", "id": "lab-1"}
+TOMATO = {"id": "food-1", "name": "tomato", "pluralName": "tomatoes", "description": "", "extras": {},
+          "labelId": "lab-1", "aliases": [], "substitutions": [], "householdsWithIngredientFood": [],
+          "label": LABEL, "recipeCount": 0, "createdAt": "2026-04-13", "updatedAt": "2026-04-13"}
+CUP = {"id": "unit-1", "name": "cup", "pluralName": "cups", "description": "", "extras": {}, "fraction": True,
+       "abbreviation": "c", "pluralAbbreviation": "", "useAbbreviation": False, "aliases": [],
+       "standardQuantity": 1.0, "standardUnit": "cup", "createdAt": "2026-04-13", "updatedAt": "2026-04-13"}
+
+# A recipe as Mealie v3.30 returns it, with the nested copies the read tools trim
+MEALIE_RECIPE = {
+    "id": "1", "userId": "u", "householdId": "h", "groupId": "g",
+    "name": "Chili Sauce", "slug": "chili", "image": "abc",
+    "recipeServings": 4.0, "recipeYieldQuantity": 0.0, "recipeYield": "",
+    "prepTime": None, "prepTimeSeconds": 3600,
+    "performTime": None, "performTimeSeconds": 7200,
+    "totalTime": None, "totalTimeSeconds": 10800, "cookTime": None,
+    "description": "Sweet and spicy.", "rating": None, "orgURL": "https://example.com/chili",
+    "recipeCategory": [organizer("Sauce", "sauce")],
+    "tags": [organizer("Gluten Free", "gluten-free"), organizer("Spicy", "spicy")],
+    "tools": [organizer("Food Processor", "food-processor", householdsWithTool=["allen"])],
+    "dateAdded": "2026-01-01", "dateUpdated": "2026-01-02T10:00:00Z",
+    "createdAt": "2026-01-01", "updatedAt": "2026-01-02",
+    "recipeIngredient": [
+        {"quantity": 0.0, "unit": None, "food": None, "referencedRecipe": None, "note": "",
+         "display": "", "title": "For the sauce", "originalText": None, "substitutions": [],
+         "referenceId": "ref-0"},
+        {"quantity": 2.0, "unit": CUP, "food": TOMATO, "referencedRecipe": None, "note": "chopped",
+         "display": "2 cups tomato chopped", "title": None, "originalText": None,
+         "substitutions": [{"quantity": 1.0, "unit": None, "food": TOMATO, "note": "canned",
+                            "display": "1 tomato canned", "referenceId": "ref-1s"}],
+         "referenceId": "ref-1"},
+        {"quantity": 1.0, "unit": None, "food": None, "note": "pinch of salt", "display": "1 pinch of salt",
+         "title": None, "referencedRecipe": None, "substitutions": [], "referenceId": "ref-2"},
+        {"quantity": 1.0, "unit": None, "food": None, "note": "", "display": "1 Garlic Paste",
+         "title": None, "referencedRecipe": {"id": "r2", "name": "Garlic Paste", "slug": "garlic-paste",
+                                             "tags": [organizer("Base", "base")]},
+         "substitutions": [], "referenceId": "ref-3"},
+    ],
+    "recipeInstructions": [
+        {"id": "s1", "title": "", "summary": "", "text": "Chop the tomatoes.",
+         "ingredientReferences": [{"referenceId": "ref-1"}], "noteReferences": [], "durationSeconds": None},
+        {"id": "s2", "title": "Cook", "summary": "", "text": "Simmer.", "ingredientReferences": [],
+         "noteReferences": [], "durationSeconds": 600},
+    ],
+    "nutrition": {"calories": "90", "fatContent": None},
+    "settings": {"public": False, "showNutrition": True},
+    "assets": [], "notes": [{"title": "Tip", "text": "Keeps a week."}], "extras": {}, "comments": [],
+    "futureField": "kept",
+}
+
+
 class FakeRecipes:
     """Stands in for MealieFetcher in the recipe tools."""
 
     def __init__(self, last_made_error: bool):
         self.last_made_error = last_made_error
+        self.last_made = "2026-11-01T18:00:00Z"
 
     def get_recipe(self, slug):
-        return {
-            "id": "1", "userId": "u", "householdId": "h", "groupId": "g",
-            "name": "Chili Sauce", "slug": slug,
-            "dateAdded": "2026-01-01", "dateUpdated": "2026-01-01",
-            "createdAt": "2026-01-01", "updatedAt": "2026-01-01",
-            "prepTime": None, "prepTimeSeconds": 3600,
-            "performTime": None, "performTimeSeconds": 7200,
-            "totalTime": None, "totalTimeSeconds": 10800,
-        }
+        return {**json.loads(json.dumps(MEALIE_RECIPE)), "slug": slug}
+
+    def get_recipes(self, **kwargs):
+        summary = {k: v for k, v in MEALIE_RECIPE.items()
+                   if k not in ("recipeIngredient", "recipeInstructions", "nutrition", "settings",
+                                "assets", "notes", "extras", "comments")}
+        return {"page": 1, "per_page": 50, "total": 1, "total_pages": 1, "next": None,
+                "previous": None, "items": [json.loads(json.dumps(summary))]}
+
+    group_lookups = 0
+
+    # create_recipe resolves names against the catalog, then PATCHes; Mealie replies
+    # with the whole recipe, as it does for duplicate and last-made
+    def create_recipe(self, name):
+        return "chili"
+
+    def get_categories(self, per_page=None):
+        return {"items": [organizer("Sauce", "sauce")]}
+
+    def get_tags(self, per_page=None):
+        return {"items": []}
+
+    def get_organizer_tools(self, per_page=None):
+        return {"items": []}
+
+    def get_foods(self, per_page=None):
+        return {"items": [TOMATO]}
+
+    def get_organizer_units(self, per_page=None):
+        return {"items": [CUP]}
+
+    def patch_recipe(self, slug, data):
+        return self.get_recipe(slug)
+
+    def duplicate_recipe(self, slug, name=None):
+        return self.get_recipe("chili-copy")
+
+    def update_recipe_last_made(self, slug):
+        # Mealie's reply to last-made: the whole recipe, and no lastMade field at all
+        self.last_made = "2026-11-04T18:00:00Z"
+        return self.get_recipe(slug)
+
+    def get_group_self(self):
+        FakeRecipes.group_lookups += 1
+        return {"id": "g", "name": "Home", "slug": "family"}
+
+    def create_recipe_share_token(self, slug):
+        return {"recipeId": "1", "expiresAt": "2099-12-04T00:00:00Z", "groupId": "g", "id": "tok-1",
+                "createdAt": "2099-11-04T00:00:00Z"}
+
+    def get_recipe_share_tokens(self, slug):
+        return [self.create_recipe_share_token(slug)]
 
     def get_household_recipe(self, slug):
         if self.last_made_error:
             raise ConnectionError("household lookup failed")
-        return {"recipeId": "1", "lastMade": "2026-11-01T18:00:00Z"}
+        return {"recipeId": "1", "lastMade": self.last_made}
 
 
+MEATS = {"name": "Meats", "color": "#6D4C41", "groupId": "g", "id": "lab-2"}
+POUND = {**CUP, "id": "unit-2", "name": "pound", "pluralName": "pounds", "abbreviation": "lb"}
+BEEF = {**TOMATO, "id": "food-2", "name": "ground beef", "labelId": "lab-2", "label": MEATS}
+
+
+def mealie_item(item_id, **fields):
+    """A shopping list item as Mealie returns it (nested objects, internal ids)."""
+    return {"quantity": 1.0, "unit": None, "food": None, "referencedRecipe": None, "note": "",
+            "display": "", "shoppingListId": "L1", "checked": False, "position": 0, "foodId": None,
+            "labelId": None, "unitId": None, "extras": {}, "id": item_id, "groupId": "g",
+            "householdId": "h", "label": None, "recipeReferences": [],
+            "createdAt": "2026-11-01", "updatedAt": "2026-11-01", **fields}
+
+
+BEEF_ITEM = mealie_item(
+    "I1", quantity=1.0, unit=POUND, food=BEEF, display="1 pound ground beef", foodId="food-2",
+    labelId="lab-2", unitId="unit-2", label=MEATS,
+    recipeReferences=[{"recipeId": "R1", "recipeQuantity": 1.0, "recipeScale": 1.0, "recipeNote": None,
+                       "id": "rr1", "shoppingListItemId": "I1"}])
+NOTE_ITEM = mealie_item("I2", note="paper towels", display="1 paper towels", checked=True, position=1)
+
+# A shopping list as Mealie returns it: label settings stored out of position order,
+# full recipe summaries in recipeReferences, nested objects in every item
 FULL_LIST = {
-    "id": "L1", "name": "Groceries", "listItems": [], "labelSettings": [],
+    "id": "L1", "name": "Groceries", "extras": {}, "groupId": "g", "userId": "u", "householdId": "h",
+    "createdAt": "2026-11-01", "updatedAt": "2026-11-01",
+    "listItems": [BEEF_ITEM, NOTE_ITEM],
+    "labelSettings": [
+        {"id": "S1", "shoppingListId": "L1", "labelId": "lab-2", "position": 1, "label": MEATS},
+        {"id": "S0", "shoppingListId": "L1", "labelId": "lab-1", "position": 0, "label": LABEL},
+    ],
     "recipeReferences": [{
         "id": "ref1", "shoppingListId": "L1", "recipeId": "R1", "recipeQuantity": 2.0,
         "recipe": {"id": "R1", "name": "Chili Sauce", "slug": "chili-sauce",
                    "description": "long text", "tags": [{"name": "t", "recipeCount": 0}]},
     }],
+}
+TRIMMED_ITEMS = [
+    {"id": "I1", "display": "1 pound ground beef", "checked": False, "quantity": 1.0, "unit": "pound",
+     "food": "ground beef", "label": "Meats", "recipeIds": ["R1"]},
+    {"id": "I2", "display": "1 paper towels", "checked": True, "quantity": 1.0, "note": "paper towels"},
+]
+TRIMMED_LIST = {
+    "id": "L1", "name": "Groceries", "labelOrder": ["Fruits", "Meats"],
+    "recipeReferences": [{"recipeId": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "recipeQuantity": 2.0}],
+    "listItems": TRIMMED_ITEMS,
 }
 
 
@@ -94,7 +244,14 @@ class FakeShopping:
         self.sent = []
 
     def get_shopping_lists(self, page=None, per_page=None):
-        return {"page": 1, "total": 1, "items": [FULL_LIST]}
+        summary = {k: v for k, v in FULL_LIST.items() if k != "listItems"}
+        return {"page": 1, "total": 1, "items": [summary]}
+
+    def get_shopping_list_items(self, page=None, per_page=None, search=None):
+        return {"page": 1, "per_page": 50, "total": 2, "items": [BEEF_ITEM, NOTE_ITEM]}
+
+    def get_shopping_list_item(self, item_id):
+        return BEEF_ITEM
 
     def get_shopping_list(self, list_id):
         return FULL_LIST
@@ -117,6 +274,136 @@ class FakeShopping:
 
     def add_recipes_to_shopping_list_bulk(self, list_id, recipes):
         return FULL_LIST
+
+
+TOMATO_ITEM = mealie_item("I3", quantity=2.0, food=TOMATO, display="2 tomatoes", foodId="food-1",
+                          labelId="lab-1", label=LABEL)
+CHECKED_TOMATO = mealie_item("I4", quantity=1.0, food=TOMATO, display="1 tomato", foodId="food-1",
+                             labelId="lab-1", label=LABEL, checked=True)
+
+
+class FakeItemWrites:
+    """Item adds and edits, answering with the reply Mealie gave in the merge probe for
+    each case; records what it was sent."""
+
+    def __init__(self, reply):
+        self.reply, self.sent = reply, []
+
+    def create_shopping_list_item(self, *args):
+        self.sent.append(args)
+        return self.reply
+
+    def create_shopping_list_items_bulk(self, items):
+        self.sent.append(items)
+        return self.reply
+
+    def update_shopping_list_item(self, item_id, data):
+        self.sent.append((item_id, data))
+        return self.reply
+
+    def update_shopping_list_items_bulk(self, items):
+        self.sent.append(items)
+        return self.reply
+
+
+class FakeDeletes:
+    """Items on two lists, as one read of all items returns them; records deletes.
+    Like Mealie, deleting reports success whatever the id."""
+
+    def __init__(self):
+        self.reads, self.deleted, self.mealplan_deletes = [], [], []
+        self.items = [BEEF_ITEM, NOTE_ITEM, {**TOMATO_ITEM, "shoppingListId": "L2"}]
+
+    def get_shopping_list_items(self, page=None, per_page=None, search=None):
+        self.reads.append(per_page)
+        return {"page": 1, "per_page": per_page, "total": len(self.items), "items": self.items}
+
+    def delete_shopping_list_item(self, item_id):
+        self.deleted.append([item_id])
+        return {"message": "", "error": False}
+
+    def delete_shopping_list_items_bulk(self, item_ids):
+        self.deleted.append(list(item_ids))
+        return {"message": "", "error": False}
+
+    def delete_shopping_list(self, list_id):
+        return FULL_LIST
+
+    def get_mealplan(self, entry_id):
+        if int(entry_id) != 7:
+            raise ValueError("404 Not found")
+        return {"id": 7, "date": "2099-03-04", "endDate": None, "entryType": "dinner", "title": "",
+                "text": "", "recipeId": RECIPE_UUID, "groupId": "g", "userId": "u", "householdId": "h",
+                "recipe": {"id": RECIPE_UUID, "name": "Chili Sauce", "slug": "chili-sauce", "tags": []}}
+
+    def delete_mealplan(self, entry_id):
+        self.mealplan_deletes.append(entry_id)
+        return {"id": 7, "date": "2099-03-04", "endDate": None, "entryType": "dinner", "title": "",
+                "text": "", "recipeId": RECIPE_UUID, "recipeScale": 1.0}
+
+
+class FakeMealplanReads:
+    """Meal plan reads as Mealie returns them: each recipe entry embeds a recipe summary."""
+
+    RECIPE = {"id": RECIPE_UUID, "name": "Chili Sauce", "slug": "chili-sauce", "groupId": "g",
+              "tags": [organizer("Spicy", "spicy")], "description": "long text", "image": "abc"}
+    ENTRIES = [
+        {"id": 1, "date": "2099-03-04", "endDate": None, "entryType": "dinner", "title": "", "text": "",
+         "recipeId": RECIPE_UUID, "recipeScale": 1.0, "groupId": "g", "userId": "u", "householdId": "h",
+         "updatedAt": "2099-01-01", "recipe": RECIPE},
+        {"id": 2, "date": "2099-03-01", "endDate": "2099-03-07", "entryType": "lunch", "title": "Soup week",
+         "text": "", "recipeId": None, "recipeScale": 1.0, "groupId": "g", "userId": "u", "householdId": "h",
+         "updatedAt": "2099-01-01", "recipe": None},
+        {"id": 3, "date": "2099-03-04", "endDate": None, "entryType": "side", "title": "Leftovers",
+         "text": "use the rice from Monday", "recipeId": None, "recipeScale": 1.0, "groupId": "g",
+         "userId": "u", "householdId": "h", "updatedAt": "2099-01-01", "recipe": None},
+    ]
+
+    def get_mealplans(self, start_date=None, end_date=None, page=None, per_page=None):
+        return {"page": 1, "per_page": 50, "total": 3, "total_pages": 1, "items": self.ENTRIES}
+
+    def get_todays_mealplan(self):
+        return [self.ENTRIES[0], self.ENTRIES[2]]
+
+
+def item_reply(created=(), updated=(), deleted=()):
+    return {"createdItems": list(created), "updatedItems": list(updated), "deletedItems": list(deleted)}
+
+
+class FakeOrganizers:
+    """Tag and category lookups as Mealie v3.30 answers them: by slug includes full
+    recipe summaries; by id gives a tag an empty recipes list and a category none."""
+
+    RECIPES = [{"id": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "tags": [], "groupId": "g"},
+               {"id": "R2", "name": "Salsa", "slug": "salsa", "tags": [], "groupId": "g"}]
+    TAGS = {"T1": {"name": "Spicy", "id": "T1", "groupId": "g", "slug": "spicy"},
+            "T2": {"name": "Unused", "id": "T2", "groupId": "g", "slug": "unused"}}
+    CATS = {"C1": {"name": "Sauce", "id": "C1", "groupId": None, "slug": "sauce"}}
+
+    def get_tag(self, tag_id):
+        if tag_id not in self.TAGS:
+            raise ValueError("404 Not found")
+        return {**self.TAGS[tag_id], "recipes": []}
+
+    def get_tag_by_slug(self, slug):
+        tag = next(t for t in self.TAGS.values() if t["slug"] == slug)
+        return {**tag, "recipes": self.RECIPES if slug == "spicy" else []}
+
+    def get_empty_tags(self):
+        # Mealie's empty-tags list uses snake_case, with a misspelled update_at
+        return [{"id": "T2", "group_id": "g", "recipe_count": 0, "slug": "unused", "update_at": "2026-04-14",
+                 "name": "Unused", "created_at": "2026-04-14"}]
+
+    def get_empty_categories(self):
+        return [{"name": "Salad", "id": "C2", "groupId": "g", "slug": "salad"}]
+
+    def get_category(self, category_id):
+        cat = self.CATS[category_id]
+        return {"id": cat["id"], "slug": cat["slug"], "name": cat["name"]}
+
+    def get_category_by_slug(self, slug):
+        cat = next(c for c in self.CATS.values() if c["slug"] == slug)
+        return {**cat, "recipes": self.RECIPES}
 
 
 class FakeLabels:
@@ -168,7 +455,6 @@ class FakeMealplanCreate:
         return entry
 
 
-RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
 
 
 def call_error(srv: FastMCP, tool: str, args: dict) -> str:
@@ -239,9 +525,116 @@ def run() -> None:
         check("detailed: failed lastMade lookup still returns the recipe", False, repr(e))
 
     # ------------------------------------------------------------------
-    section("Shopping list tools trim recipeReferences")
+    section("Recipe read tools: trimmed output")
     # ------------------------------------------------------------------
-    trimmed = [{"recipeId": "R1", "name": "Chili Sauce", "slug": "chili-sauce", "recipeQuantity": 2.0}]
+    srv = FastMCP("probe")
+    register_recipe_tools(srv, FakeRecipes(last_made_error=False))
+    out = call(srv, "get_recipes", {})
+    check("get_recipes keeps the pagination fields",
+          {k: out.get(k) for k in ("page", "per_page", "total", "total_pages")}
+          == {"page": 1, "per_page": 50, "total": 1, "total_pages": 1}, str(out)[:200])
+    summary = out["items"][0]
+    check("get_recipes: one short card per recipe, in order",
+          summary == {
+              "id": "1", "name": "Chili Sauce", "slug": "chili", "description": "Sweet and spicy.",
+              "tags": ["gluten-free", "spicy"], "recipeCategory": ["sauce"], "tools": ["food-processor"],
+              "prepTime": "1 hour", "prepTimeSeconds": 3600, "performTime": "2 hours",
+              "performTimeSeconds": 7200, "totalTime": "3 hours", "totalTimeSeconds": 10800,
+              "recipeServings": 4.0, "dateAdded": "2026-01-01", "dateUpdated": "2026-01-02T10:00:00Z",
+          }, json.dumps(summary))
+
+    d = call(srv, "get_recipe_detailed", {"slug": "chili"})
+    dropped = [k for k in ("userId", "groupId", "householdId", "createdAt", "updatedAt", "image",
+                           "cookTime", "extras", "settings", "comments", "assets") if k in d]
+    check("detailed: internal and duplicate fields dropped", not dropped, str(dropped))
+    check("detailed: orgURL, notes, nutrition, lastMade and unknown new fields kept",
+          d.get("orgURL") == "https://example.com/chili" and d.get("notes") == MEALIE_RECIPE["notes"]
+          and d.get("nutrition") == MEALIE_RECIPE["nutrition"] and d.get("lastMade") == "2026-11-01T18:00:00Z"
+          and d.get("futureField") == "kept", str({k: d.get(k) for k in ("orgURL", "lastMade", "futureField")}))
+    check("detailed: tags / recipeCategory / tools as slugs",
+          (d.get("tags"), d.get("recipeCategory"), d.get("tools"))
+          == (["gluten-free", "spicy"], ["sauce"], ["food-processor"]), str(d.get("tags")))
+    expected_ingredients = [
+        {"title": "For the sauce", "referenceId": "ref-0"},
+        {"quantity": 2.0, "note": "chopped", "display": "2 cups tomato chopped", "referenceId": "ref-1",
+         "unit": "cup", "food": "tomato", "label": "Fruits",
+         "substitutions": [{"quantity": 1.0, "note": "canned", "display": "1 tomato canned",
+                            "referenceId": "ref-1s", "food": "tomato", "label": "Fruits"}]},
+        {"quantity": 1.0, "note": "pinch of salt", "display": "1 pinch of salt", "referenceId": "ref-2"},
+        {"quantity": 1.0, "display": "1 Garlic Paste", "referenceId": "ref-3", "referencedRecipe": "garlic-paste"},
+    ]
+    check("detailed: ingredients as names (section header, food+unit+label, note-only, sub-recipe)",
+          d.get("recipeIngredient") == expected_ingredients, json.dumps(d.get("recipeIngredient")))
+    check("detailed: instruction steps without empty fields, links to ingredients kept",
+          d.get("recipeInstructions") == [
+              {"id": "s1", "text": "Chop the tomatoes.", "ingredientReferences": [{"referenceId": "ref-1"}]},
+              {"id": "s2", "title": "Cook", "text": "Simmer.", "durationSeconds": 600},
+          ], json.dumps(d.get("recipeInstructions")))
+
+    c = call(srv, "get_recipe_concise", {"slug": "chili"})
+    check("concise: name, amounts, totalTime, lastMade and trimmed ingredients",
+          c == {"name": "Chili Sauce", "slug": "chili", "recipeServings": 4.0, "totalTime": "3 hours",
+                "lastMade": "2026-11-01T18:00:00Z", "recipeIngredient": expected_ingredients}, json.dumps(c))
+    everything = json.dumps([out, d, c])
+    check("no recipeCount, groupId or nested food/unit objects left in any recipe tool",
+          "recipeCount" not in everything and "groupId" not in everything
+          and "pluralName" not in everything and "#7CB342" not in everything)
+    raw = json.dumps(MEALIE_RECIPE)
+    check("trimming leaves Mealie's data untouched",
+          json.dumps(FakeRecipes(False).get_recipe("chili")) == json.dumps({**MEALIE_RECIPE, "slug": "chili"})
+          and raw == json.dumps(MEALIE_RECIPE))
+
+    # ------------------------------------------------------------------
+    section("Links into Mealie: share links and the recipe page (MEALIE_PUBLIC_URL)")
+    # ------------------------------------------------------------------
+    saved = os.environ.pop("MEALIE_PUBLIC_URL", None)
+    try:
+        os.environ["MEALIE_PUBLIC_URL"] = "https://mealie.example.com/"
+        FakeRecipes.group_lookups = 0
+        srv = FastMCP("probe")
+        register_recipe_tools(srv, FakeRecipes(last_made_error=False))
+        link = {"id": "tok-1", "recipeName": "Chili Sauce", "recipeSlug": "chili", "expiresAt": "2099-12-04T00:00:00Z",
+                "url": "https://mealie.example.com/g/family/shared/r/tok-1"}
+        out = call(srv, "create_recipe_share_token", {"slug": "chili"})
+        check("create_recipe_share_token: the link to send (public address + group slug + token)",
+              out == link, json.dumps(out))
+        r = asyncio.run(srv.call_tool("get_recipe_share_tokens", {"slug": "chili"}))
+        listed = [json.loads(b.text) for b in (r[0] if isinstance(r, tuple) else r)]
+        check("get_recipe_share_tokens: each link with its url", listed == [link], json.dumps(listed))
+        d = call(srv, "get_recipe_detailed", {"slug": "chili"})
+        check("get_recipe_detailed: url to the recipe's page (trailing slash on the setting ignored)",
+              d.get("url") == "https://mealie.example.com/g/family/r/chili", str(d.get("url")))
+        check("the group slug is looked up once", FakeRecipes.group_lookups == 1, str(FakeRecipes.group_lookups))
+        detail = call(srv, "get_recipe_detailed", {"slug": "chili"})
+        created = call(srv, "create_recipe", {"recipe": {
+            "name": "Chili Sauce", "recipeCategory": ["sauce"],
+            "recipeIngredient": [{"quantity": 2, "unit": "cup", "food": "tomato", "note": "chopped"}],
+            "recipeInstructions": [{"text": "Simmer."}]}})
+        check("create_recipe returns the recipe exactly as get_recipe_detailed does (url included)",
+              created == detail and created.get("url"), json.dumps(created)[:160])
+        copy = call(srv, "duplicate_recipe", {"slug": "chili", "name": "Chili Sauce (copy)"})
+        check("duplicate_recipe returns the copy as get_recipe_detailed does, under the copy's slug",
+              copy == call(srv, "get_recipe_detailed", {"slug": "chili-copy"}) and copy["slug"] == "chili-copy"
+              and copy.get("url", "").endswith("/r/chili-copy"), json.dumps(copy)[:160])
+        made = call(srv, "mark_recipe_last_made", {"slug": "chili"})
+        check("mark_recipe_last_made: name, slug and lastMade read back (Mealie's reply has none)",
+              made == {"name": "Chili Sauce", "slug": "chili", "lastMade": "2026-11-04T18:00:00Z"}, json.dumps(made))
+        del os.environ["MEALIE_PUBLIC_URL"]
+        out = call(srv, "create_recipe_share_token", {"slug": "chili"})
+        check("without MEALIE_PUBLIC_URL: no url, and a note saying why",
+              "url" not in out and "MEALIE_PUBLIC_URL" in out.get("urlNote", ""), json.dumps(out))
+        check("without MEALIE_PUBLIC_URL: no recipe page url",
+              "url" not in call(srv, "get_recipe_detailed", {"slug": "chili"}))
+        check("get_recipe_exports is gone (it returned internal links nobody could open)",
+              "get_recipe_exports" not in {t.name for t in asyncio.run(srv.list_tools())})
+    finally:
+        os.environ.pop("MEALIE_PUBLIC_URL", None)
+        if saved is not None:
+            os.environ["MEALIE_PUBLIC_URL"] = saved
+
+    # ------------------------------------------------------------------
+    section("Shopping list tools trim lists and items")
+    # ------------------------------------------------------------------
     fake = FakeShopping()
     srv = FastMCP("probe")
     register_shopping_list_tools(srv, fake)
@@ -249,20 +642,190 @@ def run() -> None:
         ("get_shopping_list", {"list_id": "L1"}),
         ("create_shopping_list", {"name": "Groceries"}),
         ("update_shopping_list", {"list_id": "L1", "name": "Groceries"}),
-        ("delete_shopping_list", {"list_id": "L1"}),
         ("add_recipe_to_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
         ("remove_recipe_from_shopping_list", {"list_id": "L1", "recipe_id": "R1"}),
         ("add_recipes_to_shopping_list_bulk", {"list_id": "L1", "recipes": [{"recipeId": "R1"}]}),
     ]:
         out = call(srv, tool, args)
-        check(f"{tool}: recipeReferences trimmed", out.get("recipeReferences") == trimmed,
-              str(out.get("recipeReferences"))[:120])
+        check(f"{tool}: whole list trimmed (labelOrder, recipeReferences, items)", out == TRIMMED_LIST,
+              json.dumps(out)[:200])
     out = call(srv, "get_shopping_lists", {})
-    check("get_shopping_lists: every list's recipeReferences trimmed",
-          [i.get("recipeReferences") for i in out.get("items", [])] == [trimmed], str(out)[:120])
+    check("get_shopping_lists: each list trimmed, no items (Mealie's summaries have none)",
+          out.get("items") == [{k: v for k, v in TRIMMED_LIST.items() if k != "listItems"}]
+          and out.get("page") == 1, json.dumps(out)[:200])
+    out = call(srv, "get_shopping_list_items", {})
+    check("get_shopping_list_items: items trimmed, with their list id, pagination kept",
+          out.get("items") == [{**TRIMMED_ITEMS[0], "shoppingListId": "L1"}, {**TRIMMED_ITEMS[1], "shoppingListId": "L1"}]
+          and out.get("total") == 2, json.dumps(out)[:200])
+    out = call(srv, "get_shopping_list_item", {"item_id": "I1"})
+    check("get_shopping_list_item: item trimmed, with its list id",
+          out == {**TRIMMED_ITEMS[0], "shoppingListId": "L1"}, json.dumps(out))
+    check("no recipeCount, groupId or nested objects left in the shopping list tools",
+          not any(k in json.dumps([call(srv, "get_shopping_list", {"list_id": "L1"}),
+                                   call(srv, "get_shopping_list_items", {})])
+                  for k in ("recipeCount", "groupId", "#6D4C41", "pluralName")))
     check("rename sends only the new name (full list is merged by the fetcher, untrimmed)",
           fake.sent == [{"name": "Groceries"}], str(fake.sent))
     check("source data left untouched", "recipe" in FULL_LIST["recipeReferences"][0])
+
+    # ------------------------------------------------------------------
+    section("Item adds and edits: created / updated / deleted, trimmed")
+    # ------------------------------------------------------------------
+    tomato = {"id": "I3", "shoppingListId": "L1", "display": "2 tomatoes", "checked": False, "quantity": 2.0,
+              "food": "tomato", "label": "Fruits"}
+    beef = {**TRIMMED_ITEMS[0], "shoppingListId": "L1"}
+    cases = [
+        ("new item", "create_shopping_list_item", {"shopping_list_id": "L1", "note": "beef"},
+         item_reply(created=[BEEF_ITEM]), {"created": [beef]}),
+        ("same food + unit merges into the existing line", "create_shopping_list_item",
+         {"shopping_list_id": "L1", "note": "tomato", "food_id": "food-1"},
+         item_reply(updated=[TOMATO_ITEM]), {"updated": [tomato]}),
+        ("bulk: one new, one merging", "create_shopping_list_items_bulk",
+         {"items": [{"shoppingListId": "L1", "note": "beef"}, {"shoppingListId": "L1", "note": "tomato"}]},
+         item_reply(created=[BEEF_ITEM], updated=[TOMATO_ITEM]), {"created": [beef], "updated": [tomato]}),
+        ("check off an item", "update_shopping_list_item", {"item_id": "I4", "checked": True},
+         item_reply(updated=[CHECKED_TOMATO]),
+         {"updated": [{"id": "I4", "shoppingListId": "L1", "display": "1 tomato", "checked": True,
+                       "quantity": 1.0, "food": "tomato", "label": "Fruits"}]}),
+        ("uncheck merges into the matching line: kept line updated, other line deleted",
+         "update_shopping_list_item", {"item_id": "I4", "checked": False},
+         item_reply(updated=[TOMATO_ITEM], deleted=[CHECKED_TOMATO]), {"updated": [tomato], "deleted": ["I4"]}),
+        ("bulk edit that merges", "update_shopping_list_items_bulk", {"items": [{"id": "I4", "checked": False}]},
+         item_reply(updated=[TOMATO_ITEM], deleted=[CHECKED_TOMATO]), {"updated": [tomato], "deleted": ["I4"]}),
+        ("nothing changed: empty reply", "update_shopping_list_items_bulk", {"items": [{"id": "I4", "checked": False}]},
+         item_reply(), {}),
+    ]
+    for name, tool, args, reply, expected in cases:
+        srv = FastMCP("probe")
+        register_shopping_list_tools(srv, FakeItemWrites(reply))
+        out = call(srv, tool, args)
+        check(f"{tool}: {name}", out == expected, json.dumps(out)[:240])
+    fake = FakeItemWrites(item_reply(updated=[TOMATO_ITEM]))
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    call(srv, "update_shopping_list_item", {"item_id": "I4", "checked": False})
+    check("update_shopping_list_item still sends only the fields given", fake.sent == [("I4", {"checked": False})],
+          str(fake.sent))
+    check("item replies have no nested objects or internal ids",
+          not any(k in json.dumps(call(srv, "update_shopping_list_item", {"item_id": "I4", "checked": True}))
+                  for k in ("groupId", "foodId", "pluralName", "#7CB342")))
+
+    # ------------------------------------------------------------------
+    section("Deletes: item ids checked first, every delete says what it removed")
+    # ------------------------------------------------------------------
+    beef_out, note_out = ({**TRIMMED_ITEMS[0], "shoppingListId": "L1"}, {**TRIMMED_ITEMS[1], "shoppingListId": "L1"})
+    tomato_l2 = {"id": "I3", "shoppingListId": "L2", "display": "2 tomatoes", "checked": False, "quantity": 2.0,
+                 "food": "tomato", "label": "Fruits"}
+    fake = FakeDeletes()
+    srv = FastMCP("probe")
+    register_shopping_list_tools(srv, fake)
+    out = call(srv, "delete_shopping_list_item", {"item_id": "I1"})
+    check("delete one item: returns it as it was", out == {"deleted": [beef_out]} and fake.deleted == [["I1"]],
+          json.dumps(out))
+    check("the check is one read of all items (every list)", fake.reads == [-1], str(fake.reads))
+    out = call(srv, "delete_shopping_list_items_bulk", {"item_ids": ["I2", "I3"]})
+    check("bulk delete across two lists, a checked item included",
+          out == {"deleted": [note_out, tomato_l2]} and fake.deleted[-1] == ["I2", "I3"], json.dumps(out)[:200])
+    out = call(srv, "delete_shopping_list_items_bulk", {"item_ids": ["I1", "I1", "I2"]})
+    check("an id listed twice is deleted and reported once",
+          [i["id"] for i in out["deleted"]] == ["I1", "I2"] and fake.deleted[-1] == ["I1", "I2"], str(fake.deleted[-1]))
+    sent = len(fake.deleted)
+    err = call_error(srv, "delete_shopping_list_item", {"item_id": "I9"})
+    check("unknown id: error naming it, nothing deleted",
+          "I9" in err and "Nothing was deleted" in err and len(fake.deleted) == sent, err[-140:])
+    err = call_error(srv, "delete_shopping_list_items_bulk", {"item_ids": ["I1", "I9", "I8"]})
+    check("real ids mixed with unknown ones: error names only the unknown, NOTHING deleted (not even the real one)",
+          "I9, I8" in err and "I1" not in err.split("No shopping list item")[1] and len(fake.deleted) == sent, err[-160:])
+    reads = len(fake.reads)
+    err = call_error(srv, "delete_shopping_list_items_bulk", {"item_ids": []})
+    check("empty id list rejected before reading anything",
+          "cannot be empty" in err and len(fake.reads) == reads and len(fake.deleted) == sent, err[-80:])
+    out = call(srv, "delete_shopping_list", {"list_id": "L1"})
+    check("delete a list: id, name and how many items went with it",
+          out == {"deleted": [{"id": "L1", "name": "Groceries", "itemCount": 2}]}, json.dumps(out))
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, fake)
+    out = call(srv, "delete_mealplan", {"entry_id": 7})
+    check("delete a meal plan entry: its card, with the recipe name (read before deleting)",
+          out == {"deleted": [{"id": 7, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+                               "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"}]}
+          and fake.mealplan_deletes == [7], json.dumps(out))
+    err = call_error(srv, "delete_mealplan", {"entry_id": 8})
+    check("unknown meal plan id: error, nothing deleted", "404" in err and fake.mealplan_deletes == [7], err[-100:])
+
+    # ------------------------------------------------------------------
+    section("Item edits: merge into the current item for Mealie's full-replace PUT")
+    # ------------------------------------------------------------------
+    current = {"id": "I1", "note": "n", "quantity": 1.0, "checked": False, "unitId": "unit-2", "unit": POUND,
+               "foodId": "food-2", "food": BEEF, "labelId": "lab-2", "label": MEATS}
+    out = merge_item(current, {"checked": True})
+    check("checking off keeps every other field, nested objects included",
+          out == {**current, "checked": True}, str({k: out[k] for k in ("unit", "food", "label") if not out[k]}))
+    out = merge_item(current, {"unitId": "unit-1"})
+    check("a new unitId clears the old nested unit (Mealie read it and failed converting pounds to cups)",
+          out["unitId"] == "unit-1" and out["unit"] is None and out["food"] == BEEF and out["label"] == MEATS)
+    out = merge_item(current, {"foodId": "food-1", "labelId": "lab-1"})
+    check("a new foodId / labelId clears the old food / label",
+          out["food"] is None and out["label"] is None and out["unit"] == POUND)
+    out = merge_item(current, {"unitId": "unit-2"})
+    check("the same unitId keeps the unit", out["unit"] == POUND)
+    out = merge_item(current, {"unitId": "unit-1", "unit": CUP})
+    check("a unit object sent with its id is kept", out["unit"] == CUP)
+    out = merge_item(current, {"unitId": None})
+    check("removing the unit clears the nested unit too", out["unitId"] is None and out["unit"] is None)
+    check("the current item isn't modified", current["unit"] == POUND and current["checked"] is False)
+
+    # ------------------------------------------------------------------
+    section("Meal plan reads: the same card as create and update, with the entry's note")
+    # ------------------------------------------------------------------
+    cards = [
+        {"id": 1, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+         "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"},
+        {"id": 2, "date": "2099-03-01", "endDate": "2099-03-07", "entryType": "lunch", "title": "Soup week"},
+        {"id": 3, "date": "2099-03-04", "entryType": "side", "title": "Leftovers", "text": "use the rice from Monday"},
+    ]
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, FakeMealplanReads())
+    out = call(srv, "get_all_mealplans", {"start_date": "2099-03-01", "end_date": "2099-03-07"})
+    check("get_all_mealplans: recipe, week and noted entries as cards, pagination kept",
+          out.get("items") == cards and out.get("total") == 3, json.dumps(out)[:240])
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, FakeMealplanReads())
+    r = asyncio.run(srv.call_tool("get_todays_mealplan", {}))
+    blocks = r[0] if isinstance(r, tuple) else r
+    today = [json.loads(b.text) for b in blocks]
+    check("get_todays_mealplan: cards", today == [cards[0], cards[2]], json.dumps(today)[:200])
+    check("no embedded recipe, tags or internal ids in meal plan reads",
+          not any(k in json.dumps([out, today]) for k in ("recipeCount", "groupId", "description", '"recipe"')))
+
+    # ------------------------------------------------------------------
+    section("Tag and category lookups: by id lists the recipes, like by slug")
+    # ------------------------------------------------------------------
+    srv = FastMCP("probe")
+    register_tags_tools(srv, FakeOrganizers())
+    register_categories_tools(srv, FakeOrganizers())
+    spicy = {"id": "T1", "name": "Spicy", "slug": "spicy", "recipes": ["chili-sauce", "salsa"]}
+    check("get_tag by id returns the tag's recipes (Mealie's by-id lookup has none)",
+          call(srv, "get_tag", {"tag_id": "T1"}) == spicy, json.dumps(call(srv, "get_tag", {"tag_id": "T1"})))
+    check("get_tag_by_slug returns the same", call(srv, "get_tag_by_slug", {"tag_slug": "spicy"}) == spicy)
+    check("a tag with no recipes: empty list",
+          call(srv, "get_tag", {"tag_id": "T2"}) == {"id": "T2", "name": "Unused", "slug": "unused", "recipes": []})
+    sauce = {"id": "C1", "name": "Sauce", "slug": "sauce", "recipes": ["chili-sauce", "salsa"]}
+    check("get_category by id returns the category's recipes (Mealie's by-id lookup has no list)",
+          call(srv, "get_category", {"category_id": "C1"}) == sauce,
+          json.dumps(call(srv, "get_category", {"category_id": "C1"})))
+    check("get_category_by_slug returns the same",
+          call(srv, "get_category_by_slug", {"category_slug": "sauce"}) == sauce)
+    r = asyncio.run(srv.call_tool("get_empty_tags", {}))
+    empty_tags = [json.loads(b.text) for b in (r[0] if isinstance(r, tuple) else r)]
+    check("get_empty_tags: id, name, slug (Mealie's snake_case fields dropped)",
+          empty_tags == [{"id": "T2", "name": "Unused", "slug": "unused"}], json.dumps(empty_tags))
+    r = asyncio.run(srv.call_tool("get_empty_categories", {}))
+    empty_cats = [json.loads(b.text) for b in (r[0] if isinstance(r, tuple) else r)]
+    check("get_empty_categories: id, name, slug",
+          empty_cats == [{"id": "C2", "name": "Salad", "slug": "salad"}], json.dumps(empty_cats))
+    err = call_error(srv, "get_tag", {"tag_id": "nope"})
+    check("unknown tag id is an error", "nope" in err and "404" in err, err[-100:])
 
     # ------------------------------------------------------------------
     section("Shopping list section order by label name")

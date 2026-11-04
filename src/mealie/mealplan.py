@@ -163,7 +163,7 @@ class MealplanMixin:
             raise ValueError("Date cannot be empty")
 
         logger.info({"message": "Updating mealplan entry", "entry_id": entry_id})
-        current = self._handle_request("GET", f"/api/households/mealplans/{entry_id}")
+        current = self.get_mealplan(entry_id)
         updates: Dict[str, Any] = {"date": date, "entryType": entry_type, "endDate": None}
         if whole_week is None:
             whole_week = bool(current.get("endDate"))  # keep the entry's current kind
@@ -177,6 +177,19 @@ class MealplanMixin:
             updates["title"] = title
         merged = {**current, **updates}
         return self._handle_request("PUT", f"/api/households/mealplans/{entry_id}", json=merged)
+
+    def get_mealplan(self, entry_id: Union[int, str]) -> Dict[str, Any]:
+        """Get one mealplan entry, with its recipe summary.
+
+        Args:
+            entry_id: Numeric id of the mealplan entry
+
+        Returns:
+            JSON response containing the mealplan entry
+        """
+        if not entry_id:
+            raise ValueError("Entry ID cannot be empty")
+        return self._handle_request("GET", f"/api/households/mealplans/{entry_id}")
 
     def delete_mealplan(self, entry_id: Union[int, str]) -> Dict[str, Any]:
         """Delete a mealplan entry.

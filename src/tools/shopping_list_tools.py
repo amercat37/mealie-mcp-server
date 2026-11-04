@@ -6,33 +6,39 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
+from trim import trim_item_changes, trim_shopping_item, trim_shopping_list
 
 logger = logging.getLogger("mealie-mcp")
 
 
-def trim_recipe_references(shopping_list: Any) -> Any:
-    """Shrink a shopping list's recipeReferences to what identifies each recipe.
-
-    Mealie embeds a full recipe summary in every reference (tags, categories,
-    description, ...), most of the list's size and none of it needed to work with
-    the list. Only the tool output is trimmed — never data sent back to Mealie.
-    """
-    if isinstance(shopping_list, dict) and isinstance(shopping_list.get("recipeReferences"), list):
-        trimmed = []
-        for ref in shopping_list["recipeReferences"]:
-            recipe = ref.get("recipe") or {}
-            trimmed.append({
-                "recipeId": ref.get("recipeId"),
-                "name": recipe.get("name"),
-                "slug": recipe.get("slug"),
-                "recipeQuantity": ref.get("recipeQuantity"),
-            })
-        shopping_list = {**shopping_list, "recipeReferences": trimmed}
-    return shopping_list
-
-
 def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
     """Register all shopping list-related tools with the MCP server."""
+
+    def delete_items(item_ids: List[str]) -> Dict[str, Any]:
+        """Delete items after checking every id exists, and return what was deleted.
+
+        Mealie reports success for an id that doesn't exist, so a wrong id would read
+        as deleted while the intended item stays on the list. One read of all items
+        (every list) checks them first; an unknown id deletes nothing.
+        """
+        ids = list(dict.fromkeys(item_ids))
+        if not ids:
+            raise ValueError("Item IDs list cannot be empty")
+        existing = {
+            item["id"]: item
+            for item in mealie.get_shopping_list_items(per_page=-1).get("items", [])
+        }
+        unknown = [item_id for item_id in ids if item_id not in existing]
+        if unknown:
+            raise ValueError(
+                "No shopping list item with id " + ", ".join(unknown)
+                + ". Nothing was deleted. Read the list again (get_shopping_list) for current ids."
+            )
+        if len(ids) == 1:
+            mealie.delete_shopping_list_item(ids[0])
+        else:
+            mealie.delete_shopping_list_items_bulk(ids)
+        return {"deleted": [trim_shopping_item(existing[item_id], with_list_id=True) for item_id in ids]}
 
     # Shopping List Operations
 
@@ -48,13 +54,15 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             per_page: Number of items per page
 
         Returns:
-            Dict[str, Any]: Shopping lists with pagination information
+            Dict[str, Any]: Pagination fields and items: each list's id, name,
+                labelOrder (its section names in order) and recipeReferences. Items
+                aren't included here; use get_shopping_list for a list's items.
         """
         try:
             logger.info({"message": "Fetching shopping lists", "page": page, "per_page": per_page})
             result = mealie.get_shopping_lists(page=page, per_page=per_page)
             if isinstance(result, dict) and isinstance(result.get("items"), list):
-                result = {**result, "items": [trim_recipe_references(i) for i in result["items"]]}
+                result = {**result, "items": [trim_shopping_list(i) for i in result["items"]]}
             return result
         except Exception as e:
             error_msg = f"Error fetching shopping lists: {str(e)}"
@@ -74,7 +82,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Creating shopping list", "name": name})
-            return trim_recipe_references(mealie.create_shopping_list(name))
+            return trim_shopping_list(mealie.create_shopping_list(name))
         except Exception as e:
             error_msg = f"Error creating shopping list '{name}': {str(e)}"
             logger.error({"message": error_msg})
@@ -89,13 +97,16 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             list_id: The UUID of the shopping list
 
         Returns:
-            Dict[str, Any]: The shopping list details including all items. Recipes on
-                the list (recipeReferences) are summarized as recipeId, name, slug and
-                recipeQuantity; use get_recipe_detailed for a recipe's full details.
+            Dict[str, Any]: id, name, labelOrder (section names in the list's order),
+                recipeReferences (each recipe on the list: recipeId, name, slug,
+                recipeQuantity) and listItems. Each item: id, display (the line as
+                text), checked, quantity, unit, food, label (its store section), note,
+                and recipeIds (the recipes it came from). Use get_recipe_detailed for a
+                recipe's full details.
         """
         try:
             logger.info({"message": "Fetching shopping list", "list_id": list_id})
-            return trim_recipe_references(mealie.get_shopping_list(list_id))
+            return trim_shopping_list(mealie.get_shopping_list(list_id))
         except Exception as e:
             error_msg = f"Error fetching shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -115,7 +126,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         """
         try:
             logger.info({"message": "Updating shopping list", "list_id": list_id})
-            return trim_recipe_references(mealie.update_shopping_list(list_id, {"name": name}))
+            return trim_shopping_list(mealie.update_shopping_list(list_id, {"name": name}))
         except Exception as e:
             error_msg = f"Error updating shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -234,7 +245,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "count": len(recipes),
             })
-            return trim_recipe_references(mealie.add_recipes_to_shopping_list_bulk(list_id, recipes))
+            return trim_shopping_list(mealie.add_recipes_to_shopping_list_bulk(list_id, recipes))
         except Exception as e:
             error_msg = f"Error bulk adding recipes to shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -249,11 +260,17 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             list_id: The UUID of the shopping list to delete
 
         Returns:
-            Dict[str, Any]: Confirmation of deletion
+            Dict[str, Any]: deleted: the list's id, name and itemCount (its items are
+                deleted with it)
         """
         try:
             logger.info({"message": "Deleting shopping list", "list_id": list_id})
-            return trim_recipe_references(mealie.delete_shopping_list(list_id))
+            deleted = mealie.delete_shopping_list(list_id)
+            return {"deleted": [{
+                "id": deleted.get("id", list_id),
+                "name": deleted.get("name"),
+                "itemCount": len(deleted.get("listItems") or []),
+            }]}
         except Exception as e:
             error_msg = f"Error deleting shopping list '{list_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -282,7 +299,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "recipe_id": recipe_id,
             })
-            return trim_recipe_references(mealie.add_recipe_to_shopping_list(
+            return trim_shopping_list(mealie.add_recipe_to_shopping_list(
                 list_id, recipe_id, recipe_increment_quantity
             ))
         except Exception as e:
@@ -311,7 +328,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "list_id": list_id,
                 "recipe_id": recipe_id,
             })
-            return trim_recipe_references(mealie.remove_recipe_from_shopping_list(list_id, recipe_id))
+            return trim_shopping_list(mealie.remove_recipe_from_shopping_list(list_id, recipe_id))
         except Exception as e:
             error_msg = f"Error removing recipe from shopping list: {str(e)}"
             logger.error({"message": error_msg})
@@ -334,7 +351,9 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             search: Search term to filter items
 
         Returns:
-            Dict[str, Any]: Shopping list items with pagination information
+            Dict[str, Any]: Pagination fields and items, across all lists: each item's
+                id, shoppingListId, display, checked, quantity, unit, food, label,
+                note and recipeIds
         """
         try:
             logger.info({
@@ -343,9 +362,11 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "per_page": per_page,
                 "search": search,
             })
-            return mealie.get_shopping_list_items(
-                page=page, per_page=per_page, search=search
-            )
+            result = mealie.get_shopping_list_items(page=page, per_page=per_page, search=search)
+            if isinstance(result, dict) and isinstance(result.get("items"), list):
+                items = [trim_shopping_item(i, with_list_id=True) for i in result["items"]]
+                result = {**result, "items": items}
+            return result
         except Exception as e:
             error_msg = f"Error fetching shopping list items: {str(e)}"
             logger.error({"message": error_msg})
@@ -360,11 +381,12 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             item_id: The UUID of the shopping list item
 
         Returns:
-            Dict[str, Any]: The shopping list item details
+            Dict[str, Any]: The item's id, shoppingListId, display, checked, quantity,
+                unit, food, label, note and recipeIds
         """
         try:
             logger.info({"message": "Fetching shopping list item", "item_id": item_id})
-            return mealie.get_shopping_list_item(item_id)
+            return trim_shopping_item(mealie.get_shopping_list_item(item_id), with_list_id=True)
         except Exception as e:
             error_msg = f"Error fetching shopping list item '{item_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -391,7 +413,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             label_id: UUID of the label (optional)
 
         Returns:
-            Dict[str, Any]: The created shopping list item
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out.
         """
         try:
             logger.info({
@@ -399,9 +427,9 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 "shopping_list_id": shopping_list_id,
                 "note": note,
             })
-            return mealie.create_shopping_list_item(
+            return trim_item_changes(mealie.create_shopping_list_item(
                 shopping_list_id, note, quantity, unit_id, food_id, label_id
-            )
+            ))
         except Exception as e:
             error_msg = f"Error creating shopping list item: {str(e)}"
             logger.error({"message": error_msg})
@@ -423,11 +451,18 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                 - food_id (str, optional): UUID of the food
 
         Returns:
-            Dict[str, Any]: Results of the bulk creation operation
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out. Duplicates within the batch
+                are combined into one item.
         """
         try:
             logger.info({"message": "Creating bulk shopping list items", "count": len(items)})
-            return mealie.create_shopping_list_items_bulk(items)
+            return trim_item_changes(mealie.create_shopping_list_items_bulk(items))
         except Exception as e:
             error_msg = f"Error creating bulk shopping list items: {str(e)}"
             logger.error({"message": error_msg})
@@ -450,7 +485,15 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             checked: Whether the item is checked off
 
         Returns:
-            Dict[str, Any]: The updated shopping list item
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out. Unchecking an item, or
+                changing it to match another line, can merge the two: the kept line
+                is under updated and the other's id under deleted.
         """
         try:
             logger.info({"message": "Updating shopping list item", "item_id": item_id})
@@ -466,7 +509,7 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             if not item_data:
                 raise ValueError("At least one field must be provided to update")
 
-            return mealie.update_shopping_list_item(item_id, item_data)
+            return trim_item_changes(mealie.update_shopping_list_item(item_id, item_data))
         except Exception as e:
             error_msg = f"Error updating shopping list item '{item_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -481,11 +524,12 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             item_id: The UUID of the shopping list item to delete
 
         Returns:
-            Dict[str, Any]: Confirmation of deletion
+            Dict[str, Any]: deleted: the item as it was (id, shoppingListId, display,
+                checked, ...). An unknown id is an error and nothing is deleted.
         """
         try:
             logger.info({"message": "Deleting shopping list item", "item_id": item_id})
-            return mealie.delete_shopping_list_item(item_id)
+            return delete_items([item_id])
         except Exception as e:
             error_msg = f"Error deleting shopping list item '{item_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -505,11 +549,18 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             items: List of item dictionaries, each with id and the fields to update
 
         Returns:
-            Dict[str, Any]: Results of the bulk update operation
+            Dict[str, Any]: What happened: created, updated and deleted. Mealie adds to a matching line
+                instead of making a second one (same food and unit, or the same note
+                text), so an item can come back under updated, e.g. "3 cups onion"
+                after adding 1 cup to 2. created and updated hold the items (id,
+                shoppingListId, display, checked, quantity, unit, food, label, note,
+                recipeIds); deleted holds the ids of lines merged into another. Empty
+                parts are left out. Unchecking items, or
+                changing them to match other lines, can merge lines.
         """
         try:
             logger.info({"message": "Updating bulk shopping list items", "count": len(items)})
-            return mealie.update_shopping_list_items_bulk(items)
+            return trim_item_changes(mealie.update_shopping_list_items_bulk(items))
         except Exception as e:
             error_msg = f"Error updating bulk shopping list items: {str(e)}"
             logger.error({"message": error_msg})
@@ -526,11 +577,13 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             item_ids: List of shopping list item UUIDs to delete
 
         Returns:
-            Dict[str, Any]: Results of the bulk deletion operation
+            Dict[str, Any]: deleted: each item as it was (id, shoppingListId, display,
+                checked, ...). Every id is checked first: if any is unknown, nothing is
+                deleted and the error names it. Ids may come from different lists.
         """
         try:
             logger.info({"message": "Deleting bulk shopping list items", "count": len(item_ids)})
-            return mealie.delete_shopping_list_items_bulk(item_ids)
+            return delete_items(item_ids)
         except Exception as e:
             error_msg = f"Error deleting bulk shopping list items: {str(e)}"
             logger.error({"message": error_msg})

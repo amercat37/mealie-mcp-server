@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from mealie import MealieFetcher
+from trim import trim_organizer
 
 logger = logging.getLogger("mealie-mcp")
 
@@ -44,15 +45,15 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             category_id: The UUID of the category
 
         Returns:
-            Dict[str, Any]: The category details with a recipes list of slugs. Use
-            get_recipe_detailed to fetch full details for any slug.
+            Dict[str, Any]: The category's id, name and slug, and recipes: the slug of
+            every recipe with this category. Use get_recipe_detailed for any recipe's details.
         """
         try:
             logger.info({"message": "Fetching category", "category_id": category_id})
-            result = mealie.get_category(category_id)
-            if result.get("recipes"):
-                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
-            return result
+            # Mealie's lookup by id doesn't include the category's recipes, so look up
+            # its slug, then fetch by slug, which does
+            slug = mealie.get_category(category_id)["slug"]
+            return trim_organizer(mealie.get_category_by_slug(slug), with_recipes=True)
         except Exception as e:
             error_msg = f"Error fetching category '{category_id}': {str(e)}"
             logger.error({"message": error_msg})
@@ -67,15 +68,12 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             category_slug: The slug of the category (e.g., "breakfast", "desserts")
 
         Returns:
-            Dict[str, Any]: The category details with a recipes list of slugs. Use
-            get_recipe_detailed to fetch full details for any slug.
+            Dict[str, Any]: The category's id, name and slug, and recipes: the slug of
+            every recipe with this category. Use get_recipe_detailed for any recipe's details.
         """
         try:
             logger.info({"message": "Fetching category by slug", "category_slug": category_slug})
-            result = mealie.get_category_by_slug(category_slug)
-            if result.get("recipes"):
-                result["recipes"] = [r["slug"] for r in result["recipes"] if r.get("slug")]
-            return result
+            return trim_organizer(mealie.get_category_by_slug(category_slug), with_recipes=True)
         except Exception as e:
             error_msg = f"Error fetching category by slug '{category_slug}': {str(e)}"
             logger.error({"message": error_msg})
@@ -88,11 +86,11 @@ def register_categories_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         clean up stale or unused category entries.
 
         Returns:
-            List[Dict[str, Any]]: Categories with no associated recipes
+            List[Dict[str, Any]]: Categories with no recipes: id, name and slug
         """
         try:
             logger.info({"message": "Fetching empty categories"})
-            return mealie.get_empty_categories()
+            return [trim_organizer(o) for o in mealie.get_empty_categories()]
         except Exception as e:
             error_msg = f"Error fetching empty categories: {str(e)}"
             logger.error({"message": error_msg})

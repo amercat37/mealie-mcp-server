@@ -51,7 +51,7 @@ After creating, fetch `get_recipe_detailed` for the new recipe and report **PASS
 group**, quoting the value you got back:
 
 1. name is "__test_llm_create__"
-2. **both** categories present (Sauce, Condiment)      ← the bug emptied this
+2. **both** categories present (Sauce, Condiment — the tool lists them as slugs: sauce, condiment) ← the bug emptied this
 3. **all 5** ingredients present, each with its quantity + food (and unit where given) ← the bug emptied this
 4. ingredient 4's unit "rashers" survived in its note — not silently dropped, and not replaced by
    another unit. If the pre-check found "rashers" in the catalog, report this group as

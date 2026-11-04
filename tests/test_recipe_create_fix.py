@@ -93,7 +93,7 @@ async def run(session) -> int:
     try:
         d = await session.call_tool("get_recipe_detailed", {"slug": "test-fix-friendly"})
         rec = json.loads(_text(d))
-        cats = {c.get("slug") for c in rec.get("recipeCategory", [])}
+        cats = set(rec.get("recipeCategory", []))  # get_recipe_detailed gives slugs
         ings = rec.get("recipeIngredient", [])
         instrs = rec.get("recipeInstructions", [])
         nut = rec.get("nutrition", {})

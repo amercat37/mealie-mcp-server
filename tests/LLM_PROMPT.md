@@ -26,7 +26,6 @@ Tools to call:
 - get_recipe_comments
 - get_recipe_timeline
 - get_recipe_share_tokens
-- get_recipe_exports
 - get_categories
 - get_category
 - get_category_by_slug

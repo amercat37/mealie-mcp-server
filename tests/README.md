@@ -75,7 +75,7 @@ python tests/test_mcp_server.py
 ```
 
 **What it tests:**
-- All 51 tools are registered (`session.list_tools()`)
+- All 50 tools are registered (`session.list_tools()`)
 - Every tool can be called and succeeds (`isError` is false; failures print the error text)
 - Full create → read → update cycle via MCP tool calls, including Mealie v3.30 structured
   recipe times, household `lastMade` and whole-week meal plan entries
@@ -235,15 +235,18 @@ that automated tests can't — a real model choosing field names → the deploye
 ## Manual — LLM write test (`LLM_PROMPT_WRITE.md`)
 
 Not a script, and **mutating**, but self-cleaning. Paste the body into Claude or ChatGPT
-with the MCP server connected. It has the model run 22 steps across the shopping list and
+with the MCP server connected. It has the model run 24 steps across the shopping list and
 meal plan write tools — chaining ids between calls — and report PASS/FAIL per step.
 
 **What it tests:**
-- Shopping lists: create, rename, items (single and bulk), adding/removing recipes with
-  trimmed `recipeReferences`, reordering sections by label name, and rejecting an unknown
-  label name without changing anything
+- Shopping lists: create, rename, items (single and bulk) including an add that merges into
+  an existing line (reported as `updated`), adding/removing recipes with trimmed
+  `recipeReferences` and items, reordering sections by label name, rejecting an unknown label
+  name without changing anything, a delete with a made-up id deleting nothing, and the
+  `deleted` replies
 - Meal plans: create and update (passing the id as a number), whole-week entries, the date
-  filter, bulk create returning ids, and a bulk batch with one bad entry creating nothing
+  filter returning cards, bulk create returning ids, a bulk batch with one bad entry creating
+  nothing, and delete replies
 
 **Requirements:**
 - The MCP server connected to an LLM client

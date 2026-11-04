@@ -352,28 +352,14 @@ class RecipeMixin:
         logger.info({"message": "Creating recipe share token", "slug": slug})
         return self._handle_request("POST", "/api/shared/recipes", json={"recipeId": recipe_id})
 
-    def get_recipe_exports(self, slug: str) -> Dict[str, Any]:
-        """Get available export formats and download URLs for a recipe.
-
-        Args:
-            slug: The slug identifier of the recipe
+    def get_group_self(self) -> Dict[str, Any]:
+        """Get the current user's group (its slug is part of Mealie's web addresses).
 
         Returns:
-            Dict with available format names and their download URLs
+            JSON response containing the group, including its slug
         """
-        if not slug:
-            raise ValueError("Recipe slug cannot be empty")
-
-        logger.info({"message": "Retrieving recipe exports", "slug": slug})
-        templates = self._handle_request("GET", "/api/recipes/exports")
-        download_urls = {
-            fmt: [
-                f"{self.base_url}/api/recipes/{slug}/exports?template_name={t}"
-                for t in names
-            ]
-            for fmt, names in templates.items()
-        }
-        return {"formats": templates, "download_urls": download_urls}
+        logger.info({"message": "Retrieving current group"})
+        return self._handle_request("GET", "/api/groups/self")
 
     def delete_recipe(self, slug: str) -> Dict[str, Any]:
         """Delete a recipe
