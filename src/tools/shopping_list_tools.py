@@ -364,7 +364,8 @@ def register_shopping_list_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             })
             result = mealie.get_shopping_list_items(page=page, per_page=per_page, search=search)
             if isinstance(result, dict) and isinstance(result.get("items"), list):
-                result = {**result, "items": [trim_shopping_item(i, with_list_id=True) for i in result["items"]]}
+                items = [trim_shopping_item(i, with_list_id=True) for i in result["items"]]
+                result = {**result, "items": items}
             return result
         except Exception as e:
             error_msg = f"Error fetching shopping list items: {str(e)}"

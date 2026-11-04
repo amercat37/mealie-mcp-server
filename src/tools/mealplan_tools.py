@@ -47,13 +47,17 @@ def field_error(err: Dict[str, Any]) -> str:
 
 
 def summarize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """A created or updated meal plan entry without the embedded recipe summary."""
+    """A meal plan entry without the embedded recipe summary: id, date, endDate (week
+    entries), entryType, title, text (the entry's note, set in Mealie), and recipeId /
+    recipeName / recipeSlug for a recipe entry. Empty fields are left out."""
     summary: Dict[str, Any] = {"id": entry.get("id"), "date": entry.get("date")}
     if entry.get("endDate"):
         summary["endDate"] = entry["endDate"]
     summary["entryType"] = entry.get("entryType")
     if entry.get("title"):
         summary["title"] = entry["title"]
+    if entry.get("text"):
+        summary["text"] = entry["text"]
     if entry.get("recipeId"):
         recipe = entry.get("recipe") or {}
         summary["recipeId"] = entry["recipeId"]
@@ -76,7 +80,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Includes whole-week entries: an entry with an endDate is planned for the week
         from date to endDate rather than a specific day ("dinner sometime this week").
-        A week entry overlapping the date range is included.
+        A week entry overlapping the date range is included. Use get_recipe_concise or
+        get_recipe_detailed with an entry's recipeSlug for the recipe itself.
 
         Args:
             start_date: Start date for filtering meal plans (ISO format YYYY-MM-DD)
@@ -85,7 +90,9 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
             per_page: Number of items per page
 
         Returns:
-            Dict[str, Any]: JSON response containing mealplan items and pagination information
+            Dict[str, Any]: Pagination fields and items: each entry's id, date, endDate
+                (week entries), entryType, title, text (its note, if any), and recipeId /
+                recipeName / recipeSlug for a recipe entry
         """
         try:
             logger.info(
@@ -97,12 +104,15 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
                     "per_page": per_page,
                 }
             )
-            return mealie.get_mealplans(
+            result = mealie.get_mealplans(
                 start_date=start_date,
                 end_date=end_date,
                 page=page,
                 per_page=per_page,
             )
+            if isinstance(result, dict) and isinstance(result.get("items"), list):
+                result = {**result, "items": [summarize_entry(e) for e in result["items"]]}
+            return result
         except Exception as e:
             error_msg = f"Error fetching mealplans: {str(e)}"
             logger.error({"message": error_msg})
@@ -133,8 +143,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Returns:
             Dict[str, Any]: The created entry: id (use it with update_mealplan and
-                delete_mealplan), date, endDate (week entries only), entryType, and
-                title or recipeId/recipeName/recipeSlug
+                delete_mealplan), date, endDate (week entries only), entryType, title,
+                text (its note, if any) and recipeId/recipeName/recipeSlug
         """
         try:
             logger.info(
@@ -185,7 +195,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         Returns:
             Dict[str, Any]: created — the entries in the order given, each with its id
                 (use it with update_mealplan and delete_mealplan), date, endDate (week
-                entries only), entryType, and title or recipeId/recipeName/recipeSlug
+                entries only), entryType, title, text (its note, if any) and
+                recipeId/recipeName/recipeSlug
         """
         logger.info({"message": "Creating bulk mealplan entries", "entries_count": len(entries)})
         if not entries:
@@ -262,7 +273,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Returns:
             Dict[str, Any]: The updated entry: id, date, endDate (week entries only),
-                entryType, and title or recipeId/recipeName/recipeSlug
+                entryType, title, text (its note, if any) and
+                recipeId/recipeName/recipeSlug
         """
         try:
             logger.info({"message": "Updating mealplan entry", "entry_id": entry_id})
@@ -290,7 +302,8 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
 
         Returns:
             Dict[str, Any]: deleted: the entry as it was (id, date, endDate for week
-                entries, entryType, and title or recipeId/recipeName/recipeSlug)
+                entries, entryType, title, text (its note, if any) and
+                recipeId/recipeName/recipeSlug)
         """
         try:
             logger.info({"message": "Deleting mealplan entry", "entry_id": entry_id})
@@ -312,11 +325,12 @@ def register_mealplan_tools(mcp: FastMCP, mealie: MealieFetcher) -> None:
         use get_all_mealplans with today's date to also see this week's week entries.
 
         Returns:
-            List[Dict[str, Any]]: List of today's mealplan entries
+            List[Dict[str, Any]]: Today's entries: id, date, entryType, title, text (its
+                note, if any), and recipeId / recipeName / recipeSlug for a recipe entry
         """
         try:
             logger.info({"message": "Fetching today's mealplan"})
-            return mealie.get_todays_mealplan()
+            return [summarize_entry(e) for e in mealie.get_todays_mealplan()]
         except Exception as e:
             error_msg = f"Error fetching today's mealplan: {str(e)}"
             logger.error({"message": error_msg})

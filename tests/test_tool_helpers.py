@@ -11,6 +11,7 @@ No live infrastructure — exercises logic against stand-in objects:
 - reordering a shopping list's sections by label name
 - item adds and edits reporting created / updated / deleted (Mealie merges lines)
 - deletes: item ids checked first (nothing deleted if any is unknown), trimmed replies
+- meal plan reads as cards, keeping the entry's note
 - create_mealplan / create_mealplan_bulk / update_mealplan: trimmed entries, checks before creating,
   partial-failure report
 
@@ -59,6 +60,9 @@ class FakeMealplan(MealplanMixin):
 
     def get_household_preferences(self):
         return {"firstDayOfWeek": self.first_day}
+
+
+RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
 
 
 def organizer(name, slug, **extra):
@@ -292,6 +296,30 @@ class FakeDeletes:
                 "text": "", "recipeId": RECIPE_UUID, "recipeScale": 1.0}
 
 
+class FakeMealplanReads:
+    """Meal plan reads as Mealie returns them: each recipe entry embeds a recipe summary."""
+
+    RECIPE = {"id": RECIPE_UUID, "name": "Chili Sauce", "slug": "chili-sauce", "groupId": "g",
+              "tags": [organizer("Spicy", "spicy")], "description": "long text", "image": "abc"}
+    ENTRIES = [
+        {"id": 1, "date": "2099-03-04", "endDate": None, "entryType": "dinner", "title": "", "text": "",
+         "recipeId": RECIPE_UUID, "recipeScale": 1.0, "groupId": "g", "userId": "u", "householdId": "h",
+         "updatedAt": "2099-01-01", "recipe": RECIPE},
+        {"id": 2, "date": "2099-03-01", "endDate": "2099-03-07", "entryType": "lunch", "title": "Soup week",
+         "text": "", "recipeId": None, "recipeScale": 1.0, "groupId": "g", "userId": "u", "householdId": "h",
+         "updatedAt": "2099-01-01", "recipe": None},
+        {"id": 3, "date": "2099-03-04", "endDate": None, "entryType": "side", "title": "Leftovers",
+         "text": "use the rice from Monday", "recipeId": None, "recipeScale": 1.0, "groupId": "g",
+         "userId": "u", "householdId": "h", "updatedAt": "2099-01-01", "recipe": None},
+    ]
+
+    def get_mealplans(self, start_date=None, end_date=None, page=None, per_page=None):
+        return {"page": 1, "per_page": 50, "total": 3, "total_pages": 1, "items": self.ENTRIES}
+
+    def get_todays_mealplan(self):
+        return [self.ENTRIES[0], self.ENTRIES[2]]
+
+
 def item_reply(created=(), updated=(), deleted=()):
     return {"createdItems": list(created), "updatedItems": list(updated), "deletedItems": list(deleted)}
 
@@ -373,7 +401,6 @@ class FakeMealplanCreate:
         return entry
 
 
-RECIPE_UUID = "8896a171-9789-4f71-8a39-849e1ad67714"
 
 
 def call_error(srv: FastMCP, tool: str, args: dict) -> str:
@@ -645,6 +672,29 @@ def run() -> None:
     out = merge_item(current, {"unitId": None})
     check("removing the unit clears the nested unit too", out["unitId"] is None and out["unit"] is None)
     check("the current item isn't modified", current["unit"] == POUND and current["checked"] is False)
+
+    # ------------------------------------------------------------------
+    section("Meal plan reads: the same card as create and update, with the entry's note")
+    # ------------------------------------------------------------------
+    cards = [
+        {"id": 1, "date": "2099-03-04", "entryType": "dinner", "recipeId": RECIPE_UUID,
+         "recipeName": "Chili Sauce", "recipeSlug": "chili-sauce"},
+        {"id": 2, "date": "2099-03-01", "endDate": "2099-03-07", "entryType": "lunch", "title": "Soup week"},
+        {"id": 3, "date": "2099-03-04", "entryType": "side", "title": "Leftovers", "text": "use the rice from Monday"},
+    ]
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, FakeMealplanReads())
+    out = call(srv, "get_all_mealplans", {"start_date": "2099-03-01", "end_date": "2099-03-07"})
+    check("get_all_mealplans: recipe, week and noted entries as cards, pagination kept",
+          out.get("items") == cards and out.get("total") == 3, json.dumps(out)[:240])
+    srv = FastMCP("probe")
+    register_mealplan_tools(srv, FakeMealplanReads())
+    r = asyncio.run(srv.call_tool("get_todays_mealplan", {}))
+    blocks = r[0] if isinstance(r, tuple) else r
+    today = [json.loads(b.text) for b in blocks]
+    check("get_todays_mealplan: cards", today == [cards[0], cards[2]], json.dumps(today)[:200])
+    check("no embedded recipe, tags or internal ids in meal plan reads",
+          not any(k in json.dumps([out, today]) for k in ("recipeCount", "groupId", "description", '"recipe"')))
 
     # ------------------------------------------------------------------
     section("Tag and category lookups: by id lists the recipes, like by slug")

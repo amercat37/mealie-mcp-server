@@ -1144,6 +1144,29 @@ async def run(session: ClientSession) -> None:
     except Exception as e:
         check("whole-week meal plan entries", False, str(e))
 
+    # Meal plan reads are cards like create/update, keeping the entry's note (text).
+    # The tools can't write a note, so the entry is created through Mealie's API.
+    try:
+        recipe = _mealie.get_recipes(per_page=1)["items"][0]
+        noted = _mealie._handle_request("POST", "/api/households/mealplans", json={
+            "date": "2099-01-28", "entryType": "dinner", "recipeId": recipe["id"],
+            "title": "__test_noted_mealplan__", "text": "__test note: double it__",
+        })
+        r = await session.call_tool("get_all_mealplans", {"start_date": "2099-01-28", "end_date": "2099-01-28"})
+        items = _json.loads(r.content[0].text).get("items", []) if not r.isError else []
+        card = next((e for e in items if e.get("id") == noted["id"]), {})
+        check("get_all_mealplans returns cards: recipe name and slug, the note kept, no embedded recipe",
+              card.get("text") == "__test note: double it__" and card.get("recipeName") == recipe["name"]
+              and card.get("recipeSlug") == recipe["slug"]
+              and not ({"recipe", "groupId", "userId", "householdId", "recipeScale"} & {k for e in items for k in e}),
+              str(items)[:240])
+        r = await session.call_tool("delete_mealplan", {"entry_id": noted["id"]})
+        gone = _json.loads(r.content[0].text).get("deleted", []) if not r.isError else []
+        check("delete_mealplan card includes the note and recipe name",
+              gone == [card], str(gone)[:200])
+    except Exception as e:
+        check("get_all_mealplans returns cards: recipe name and slug, the note kept, no embedded recipe", False, repr(e))
+
     try:
         r = await session.call_tool("create_mealplan_bulk", {
             "entries": [{"date": "2099-02-04", "entry_type": "dinner",
